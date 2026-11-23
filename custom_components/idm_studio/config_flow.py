@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -11,7 +12,7 @@ from homeassistant.components.bluetooth import (
     async_discovered_service_info,
 )
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_ADDRESS
+from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import callback
 
 from .const import CONF_SIZE, DEFAULT_SIZE, DOMAIN
@@ -66,7 +67,7 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
             if _is_panel(info) and info.address not in configured
         }
         if not self._found:
-            return self.async_abort(reason="no_devices_found")
+            return await self.async_step_manual()
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
@@ -77,6 +78,32 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA,
                 }
             ),
+        )
+
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """No panel advertising right now (off, or busy with the phone app)."""
+        errors = {}
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS].strip().upper()
+            if not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", address):
+                errors[CONF_ADDRESS] = "invalid_address"
+            else:
+                await self.async_set_unique_id(address, raise_on_progress=False)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME].strip() or f"IDM {address[-8:]}",
+                    data={CONF_ADDRESS: address, CONF_SIZE: user_input[CONF_SIZE]},
+                )
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Optional(CONF_NAME, default=""): str,
+                    vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA,
+                }
+            ),
+            errors=errors,
         )
 
     @staticmethod
