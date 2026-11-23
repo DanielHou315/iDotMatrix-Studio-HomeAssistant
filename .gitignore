@@ -1,0 +1,26 @@
+# Environment
+.env
+.envrc
+
+# Logs
+log/
+logs/
+Log/
+Logs/
+*.log
+
+# likely agent docs
+docs/superpowers
+docs/plans/
+docs/specs
+
+# worktrees
+.worktrees
+
+# agent workspaces
+.claude/
+.codex/
+.cursor/
+
+# IDE files
+.vscode/
