@@ -1,0 +1,26 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "description": "Pick the iDotMatrix panel to add.",
+        "data": { "address": "Panel", "size": "Panel size" }
+      },
+      "confirm": {
+        "description": "Add {name}?",
+        "data": { "size": "Panel size" }
+      }
+    },
+    "abort": {
+      "already_configured": "This panel is already set up.",
+      "no_devices_found": "No iDotMatrix panels found over Bluetooth. Make sure the panel is on and not connected to the phone app."
+    }
+  },
+  "options": {
+    "step": { "init": { "data": { "size": "Panel size" } } }
+  },
+  "entity": {
+    "button": { "sync_time": { "name": "Sync time" } },
+    "select": { "design": { "name": "Design" } }
+  }
+}
