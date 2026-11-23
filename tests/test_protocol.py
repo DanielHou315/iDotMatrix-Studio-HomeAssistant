@@ -1,19 +1,15 @@
 """Tests for the pure packet builders."""
 
-import importlib.util
 import io
 import zlib
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from PIL import Image, ImageFont
 
-# Load protocol.py directly so the tests don't need Home Assistant installed.
-_PATH = Path(__file__).parents[1] / "custom_components/idm_studio/protocol.py"
-_spec = importlib.util.spec_from_file_location("protocol", _PATH)
-p = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(p)
+from conftest import load
+
+p = load("protocol")
 
 
 def test_simple_settings():
@@ -89,6 +85,10 @@ def test_frames_to_gif_roundtrip():
     with Image.open(io.BytesIO(gif)) as img:
         assert img.size == (32, 32)
         assert img.n_frames == 2
+    gif2 = p.frames_to_gif([red, blue], 32, [60, 400])
+    with Image.open(io.BytesIO(gif2)) as img:
+        img.seek(1)
+        assert img.info["duration"] == 400
     packets = p.gif_packets(gif)
     assert packets[0][2] == 1
     assert packets[0][13:16] == bytes([5, 0, 13])

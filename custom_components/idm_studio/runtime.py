@@ -18,9 +18,10 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import protocol
+from . import media, protocol
 from .const import DOMAIN, STORAGE_VERSION
 from .device import IdmConnection
+from .library import MediaLibrary
 
 COLOR = vol.All(
     vol.ExactSequence([vol.Coerce(int)] * 3),
@@ -32,7 +33,15 @@ MAX_UPLOAD = 2 * 1024 * 1024
 MAX_FRAMES = 64
 
 # Actions that change what the panel shows; these can be saved as designs.
-SHOW_ACTIONS = ("clock", "color", "effect", "image", "gif", "animation", "text", "scoreboard")
+SHOW_ACTIONS = ("clock", "color", "effect", "image", "gif", "animation", "text", "scoreboard", "media")
+
+VIEW = {
+    vol.Optional("fit", default="cover"): vol.In(media.FITS),
+    vol.Optional("zoom", default=1.0): vol.All(vol.Coerce(float), vol.Range(1, 8)),
+    vol.Optional("x", default=0.0): vol.All(vol.Coerce(float), vol.Range(-1, 1)),
+    vol.Optional("y", default=0.0): vol.All(vol.Coerce(float), vol.Range(-1, 1)),
+    vol.Optional("sharp", default=False): cv.boolean,
+}
 
 SCHEMAS: dict[str, vol.Schema] = {
     "power": vol.Schema({vol.Required("on"): cv.boolean}),
@@ -106,8 +115,10 @@ SCHEMAS: dict[str, vol.Schema] = {
             vol.Optional("font_size"): vol.All(vol.Coerce(int), vol.Range(6, 64)),
         }
     ),
+    "media": vol.Schema({vol.Required("id"): cv.string, **VIEW}),
     "design": vol.Schema({vol.Required("id"): cv.string}),
 }
+PREVIEW_SCHEMA = vol.Schema({vol.Required("id"): cv.string, **VIEW})
 
 
 def _decode(data: str, limit: int = MAX_UPLOAD) -> bytes:
@@ -125,8 +136,17 @@ def _decode(data: str, limit: int = MAX_UPLOAD) -> bytes:
 class IdmDisplay:
     """State and actions for one panel."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str, address: str, name: str, size: int) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        address: str,
+        name: str,
+        size: int,
+        library: MediaLibrary,
+    ) -> None:
         self.hass = hass
+        self.library = library
         self.entry_id = entry_id
         self.name = name
         self.size = size
@@ -295,24 +315,56 @@ class IdmDisplay:
             raise HomeAssistantError("File too large")
         return raw
 
+    async def _show_prepared(self, prepared: media.Prepared) -> None:
+        if prepared.animated:
+            gif = await self.hass.async_add_executor_job(
+                protocol.frames_to_gif, prepared.frames, self.size, prepared.delays
+            )
+            await self._send_gif(gif)
+        else:
+            self.canvas = bytearray(prepared.frames[0].tobytes())
+            await self._send_canvas()
+
+    async def _prepare(self, raw: bytes, view: dict[str, Any]) -> media.Prepared:
+        return await self.hass.async_add_executor_job(
+            media.prepare, raw, self.size, media.View(**view)
+        )
+
     async def _do_image(self, data):
         if "rgb" in data:
             rgb = _decode(data["rgb"])
             if len(rgb) != len(self.canvas):
                 raise HomeAssistantError(f"Expected {self.size}x{self.size} RGB data")
-        else:
-            raw = _decode(data["file"]) if "file" in data else await self._read_path(data["path"])
-            rgb = await self.hass.async_add_executor_job(protocol.fit_image, raw, self.size)
-        self.canvas = bytearray(rgb)
-        await self._send_canvas()
+            self.canvas = bytearray(rgb)
+            await self._send_canvas()
+            return
+        raw = _decode(data["file"]) if "file" in data else await self._read_path(data["path"])
+        await self._show_prepared(await self._prepare(raw, {}))
 
     async def _send_gif(self, gif: bytes) -> None:
         await self.conn.send(protocol.gif_packets(gif))
 
     async def _do_gif(self, data):
         raw = _decode(data["file"]) if "file" in data else await self._read_path(data["path"])
-        gif = await self.hass.async_add_executor_job(protocol.resize_gif, raw, self.size)
-        await self._send_gif(gif)
+        await self._show_prepared(await self._prepare(raw, {}))
+
+    async def _do_media(self, data):
+        raw = await self.library.async_read(data["id"])
+        view = {k: data[k] for k in ("fit", "zoom", "x", "y", "sharp")}
+        await self._show_prepared(await self._prepare(raw, view))
+
+    async def async_preview(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Exactly what ``media`` would send, for the sidebar preview."""
+        request = PREVIEW_SCHEMA(dict(request))
+        raw = await self.library.async_read(request["id"])
+        view = {k: request[k] for k in ("fit", "zoom", "x", "y", "sharp")}
+        prepared = await self._prepare(raw, view)
+        return {
+            "size": self.size,
+            "frames": [base64.b64encode(f.tobytes()).decode() for f in prepared.frames],
+            "delays": prepared.delays,
+            "analysis": prepared.analysis,
+        }
 
     async def _do_animation(self, data):
         from PIL import Image

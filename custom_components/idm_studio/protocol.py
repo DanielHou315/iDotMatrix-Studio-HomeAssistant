@@ -205,8 +205,13 @@ def _dark_background(gif: bytes) -> bytes:
     return bytes(out)
 
 
-def frames_to_gif(frames: Sequence[Image.Image], size: int, delay_ms: int) -> bytes:
-    """Encode RGB frames as a looping GIF sized for the panel."""
+def frames_to_gif(
+    frames: Sequence[Image.Image], size: int, delay_ms: int | Sequence[int]
+) -> bytes:
+    """Encode RGB frames as a looping GIF sized for the panel.
+
+    ``delay_ms`` is one delay for every frame, or one per frame.
+    """
     if not frames:
         raise ValueError("animation needs at least one frame")
     rgb = [
@@ -228,7 +233,11 @@ def frames_to_gif(frames: Sequence[Image.Image], size: int, delay_ms: int) -> by
         save_all=True,
         append_images=indexed[1:],
         loop=0,
-        duration=max(20, int(delay_ms)),
+        duration=(
+            [max(20, int(d)) for d in delay_ms]
+            if isinstance(delay_ms, Sequence)
+            else max(20, int(delay_ms))
+        ),
         disposal=2,
     )
     return _dark_background(buffer.getvalue())

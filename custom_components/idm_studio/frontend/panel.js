@@ -9,7 +9,7 @@ const MODES = [
   { id: "draw", label: "Draw", icon: "M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25Z" },
   { id: "text", label: "Text", icon: "M5 4v3h5.5v12h3V7H19V4H5Z" },
   { id: "clock", label: "Clock", icon: "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16m0-18a10 10 0 1 1 0 20 10 10 0 0 1 0-20m.5 5v5.25l4.5 2.67-.75 1.23L11 13V7h1.5Z" },
-  { id: "image", label: "Image", icon: "M8.5 13.5l2.5 3 3.5-4.5 4.5 6H5m16 1V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2Z" },
+  { id: "gallery", label: "Gallery", icon: "M8.5 13.5l2.5 3 3.5-4.5 4.5 6H5m16 1V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2Z" },
   { id: "effect", label: "Effects", icon: "M7.5 5.6 10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7l2.5-1.4m12 9.8L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14l-2.5 1.4M22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2m-8.6 5.3a1 1 0 0 0-1.4 0L1.3 18a1 1 0 0 0 0 1.4l2.3 2.3a1 1 0 0 0 1.4 0L15.7 11a1 1 0 0 0 0-1.4l-2.3-2.3m-1 5.5-2.1-2.1 2.4-2.4 2.1 2.1-2.4 2.4Z" },
   { id: "color", label: "Color", icon: "M17.5 12a1.5 1.5 0 0 1-1.5-1.5A1.5 1.5 0 0 1 17.5 9a1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5m-3-4A1.5 1.5 0 0 1 13 6.5 1.5 1.5 0 0 1 14.5 5 1.5 1.5 0 0 1 16 6.5 1.5 1.5 0 0 1 14.5 8m-5 0A1.5 1.5 0 0 1 8 6.5 1.5 1.5 0 0 1 9.5 5 1.5 1.5 0 0 1 11 6.5 1.5 1.5 0 0 1 9.5 8m-3 4A1.5 1.5 0 0 1 5 10.5 1.5 1.5 0 0 1 6.5 9 1.5 1.5 0 0 1 8 10.5 1.5 1.5 0 0 1 6.5 12M12 3a9 9 0 0 0-9 9 9 9 0 0 0 9 9 1.5 1.5 0 0 0 1.5-1.5c0-.39-.15-.74-.39-1-.23-.27-.38-.62-.38-1a1.5 1.5 0 0 1 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8Z" },
   { id: "score", label: "Score", icon: "M2 5v14h20V5H2m9 12H4V7h7v10m9 0h-7V7h7v10M6 9h3v6H6V9m9 0h3v6h-3V9Z" },
@@ -43,6 +43,19 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+/** Re-encode large stills so uploads stay well under the 4 MB websocket limit. */
+async function shrinkStill(file) {
+  const bmp = await createImageBitmap(file);
+  const edge = 1024;
+  if (file.size < 1.5 * 1024 * 1024 && Math.max(bmp.width, bmp.height) <= edge) return file;
+  const scale = Math.min(1, edge / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale);
+  c.height = Math.round(bmp.height * scale);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((resolve) => c.toBlob(resolve, "image/png"));
 }
 
 class IdmStudioPanel extends HTMLElement {
@@ -159,17 +172,34 @@ class IdmStudioPanel extends HTMLElement {
     const n = this._size;
     const px = canvas.width / n;
     const ctx = canvas.getContext("2d");
+    const state = this.panel?.state;
+    // The panel's own brightness, so the preview dims like the real thing.
+    const level = !state || state.power ? 0.3 + 0.7 * ((state?.brightness ?? 100) / 100) : 0;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.filter = "none";
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
         const o = (y * n + x) * 3;
-        const [r, g, b] = [this._buf[o], this._buf[o + 1], this._buf[o + 2]];
-        ctx.fillStyle = r + g + b ? `rgb(${r},${g},${b})` : "#161616";
+        // LEDs cannot show very dark tones; they read as off.
+        let r = this._buf[o], g = this._buf[o + 1], b = this._buf[o + 2];
+        if (Math.max(r, g, b) < 10) r = g = b = 0;
+        ctx.fillStyle = r + g + b && level ? `rgb(${r * level},${g * level},${b * level})` : "#141414";
         ctx.beginPath();
-        ctx.arc(x * px + px / 2, y * px + px / 2, px * 0.42, 0, Math.PI * 2);
+        ctx.arc(x * px + px / 2, y * px + px / 2, px * 0.4, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+    if (level) {
+      // Soft bloom: a blurred copy added on top, like light spilling through the diffuser.
+      ctx.globalCompositeOperation = "lighter";
+      ctx.filter = `blur(${px * 0.55}px)`;
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(canvas, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
+      ctx.globalCompositeOperation = "source-over";
     }
   }
 
@@ -202,6 +232,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _paintPreview() {
+    if (this._mode === "gallery" && this._anim) this._preview = this._anim.frames[this._anim.i];
     if (this._mode === "draw" || !this._preview) {
       this._paintScreen();
       return;
@@ -244,6 +275,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _pointer(ev, phase) {
+    if (this._mode === "gallery") return this._panPointer(ev, phase);
     if (this._mode !== "draw") return;
     if (phase === "down") {
       this._drawing = true;
@@ -272,8 +304,16 @@ class IdmStudioPanel extends HTMLElement {
     if (this._tool === "fill") {
       if (phase === "down") this._fill(x, y, hexToRgb(this._color));
     } else {
-      this._setPixel(x, y, this._tool === "eraser" ? [0, 0, 0] : hexToRgb(this._color));
+      // Pointer events skip cells on fast strokes, so join them with a line.
+      const rgb = this._tool === "eraser" ? [0, 0, 0] : hexToRgb(this._color);
+      const [x0, y0] = phase === "down" || !this._last ? [x, y] : this._last;
+      const steps = Math.max(Math.abs(x - x0), Math.abs(y - y0));
+      for (let i = 0; i <= steps; i++) {
+        const t = steps ? i / steps : 0;
+        this._setPixel(Math.round(x0 + (x - x0) * t), Math.round(y0 + (y - y0) * t), rgb);
+      }
     }
+    this._last = [x, y];
     this._paintScreen();
     this._scheduleFlush();
   }
@@ -322,6 +362,7 @@ class IdmStudioPanel extends HTMLElement {
       if (!btn) return;
       this._mode = btn.dataset.mode;
       this._preview = null;
+      this._stopAnim();
       root.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("active", b === btn));
       this._renderControls();
     });
@@ -520,59 +561,208 @@ class IdmStudioPanel extends HTMLElement {
     });
   }
 
-  _controls_image(el) {
-    const [saveHtml, bindSave] = this._saveRow(() => {
-      const img = this._form.image;
-      if (!img) return this._toast("Pick an image first");
-      if (img.gif) this._saveDesign("gif", { file: img.b64 }, this._thumb());
-      else this._saveDesign("image", { rgb: toBase64(this._preview) }, this._previewThumb());
-    });
-    el.innerHTML = `
-      <label class="drop"><input type="file" id="file" accept="image/*"><span>${this._form.image ? esc(this._form.image.name) : "Choose an image or GIF"}</span></label>
-      <div class="row">
-        <label>Fit <select id="fit"><option value="cover">Fill</option><option value="contain">Fit</option><option value="stretch">Stretch</option></select></label>
-        <span class="spacer"></span>
-        <button class="ghost" id="edit">Edit in Draw</button>
-        <button class="primary" id="send">Show</button>
-      </div>
-      <div class="hint">GIFs are resized on the server and play on the panel; the preview shows the first frame.</div>
-      ${saveHtml}`;
-    bindSave(el);
-    const fit = el.querySelector("#fit");
-    fit.value = this._fit || "cover";
-    const load = async () => {
-      const file = el.querySelector("#file").files[0] || this._form.image?.file;
-      if (!file) return;
-      const b64 = await fileToBase64(file);
-      this._form.image = { file, name: file.name, gif: file.type === "image/gif", b64 };
-      el.querySelector(".drop span").textContent = file.name;
-      const bmp = await createImageBitmap(file);
-      this._simulate((ctx, n) => {
-        ctx.imageSmoothingQuality = "high";
-        const mode = fit.value;
-        if (mode === "stretch") return ctx.drawImage(bmp, 0, 0, n, n);
-        const scale = (mode === "cover" ? Math.max : Math.min)(n / bmp.width, n / bmp.height);
-        const w = bmp.width * scale, h = bmp.height * scale;
-        ctx.drawImage(bmp, (n - w) / 2, (n - h) / 2, w, h);
-      });
+  // --- gallery -----------------------------------------------------------------
+
+  async _loadMedia() {
+    try {
+      this._media = (await this._hass.callWS({ type: "idm_studio/media/list" })).items;
+    } catch (err) {
+      this._toast(`Could not load the gallery: ${err.message || err}`);
+      this._media = [];
+    }
+  }
+
+  _stopAnim() {
+    clearTimeout(this._anim?.timer);
+    this._anim = null;
+  }
+
+  _startAnim(frames, delays) {
+    this._stopAnim();
+    const anim = { frames, delays, i: 0, timer: null };
+    this._anim = anim;
+    const tick = () => {
+      if (this._anim !== anim) return;
+      this._paintPreview();
+      if (frames.length < 2) return;
+      anim.timer = setTimeout(() => {
+        anim.i = (anim.i + 1) % frames.length;
+        tick();
+      }, delays[anim.i] || 100);
     };
-    el.querySelector("#file").addEventListener("change", load);
-    fit.addEventListener("change", () => { this._fit = fit.value; load(); });
-    el.querySelector("#send").addEventListener("click", () => {
-      const img = this._form.image;
-      if (!img) return this._toast("Pick an image first");
-      if (img.gif) this._run("gif", { file: img.b64 });
-      else this._run("image", { rgb: toBase64(this._preview) });
+    tick();
+  }
+
+  _schedulePreview() {
+    clearTimeout(this._previewTimer);
+    this._previewTimer = setTimeout(() => this._fetchPreview(), 120);
+  }
+
+  async _fetchPreview() {
+    if (!this._sel) return;
+    const ticket = (this._previewTicket = (this._previewTicket || 0) + 1);
+    try {
+      const res = await this._hass.callWS({ type: "idm_studio/preview", entry_id: this._entryId, view: { id: this._sel, ...this._view } });
+      if (ticket !== this._previewTicket || this._mode !== "gallery") return;
+      this._previewResult = res;
+      this._startAnim(res.frames.map(fromBase64), res.delays);
+      this._renderAnalysis();
+    } catch (err) {
+      this._toast(`Preview failed: ${err.message || err}`);
+    }
+  }
+
+  _renderAnalysis() {
+    const box = this.shadowRoot.querySelector("#analysis");
+    const res = this._previewResult;
+    if (!box || !res) return;
+    const a = res.analysis;
+    const secs = a.duration_ms ? `, ${(a.duration_ms / 1000).toFixed(1)} s loop` : "";
+    box.innerHTML = `
+      <div class="fit ${a.level}"><span class="score">${a.score}</span><span>${{ good: "Good fit", fair: "Some detail lost", poor: "Too detailed" }[a.level]}</span></div>
+      <ul>${a.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+      <div class="hint">${a.frames} frame${a.frames > 1 ? "s" : ""}${secs} &middot; source ${a.source[0]}&times;${a.source[1]}</div>`;
+  }
+
+  _panPointer(ev, phase) {
+    if (!this._sel) return;
+    const canvas = this.shadowRoot.querySelector("#screen");
+    if (phase === "down") {
+      this._pan = { x: ev.clientX, y: ev.clientY, vx: this._view.x, vy: this._view.y };
+      canvas.setPointerCapture(ev.pointerId);
+      return;
+    }
+    if (!this._pan) return;
+    if (phase === "up") {
+      this._pan = null;
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    this._view.x = clamp(this._pan.vx - ((ev.clientX - this._pan.x) / rect.width) * 2);
+    this._view.y = clamp(this._pan.vy - ((ev.clientY - this._pan.y) / rect.height) * 2);
+    this._schedulePreview();
+  }
+
+  async _upload(files) {
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      let blob = file;
+      const isGif = file.type === "image/gif";
+      if (isGif && file.size > 3 * 1024 * 1024) {
+        this._toast(`${file.name} is over 3 MB; trim the GIF first`);
+        continue;
+      }
+      if (!isGif) blob = await shrinkStill(file);
+      try {
+        this._setBusy(true);
+        const res = await this._hass.callWS({ type: "idm_studio/media/upload", name: file.name.replace(/\.[^.]+$/, ""), file: await fileToBase64(blob) });
+        await this._loadMedia();
+        this._select(res.id);
+      } catch (err) {
+        this._toast(`Upload of ${file.name} failed: ${err.message || err}`);
+      } finally {
+        this._setBusy(false);
+      }
+    }
+  }
+
+  _select(id) {
+    this._sel = id;
+    // Built-in art is drawn for the panel, so keep its pixels crisp.
+    this._view = { fit: "cover", zoom: 1, x: 0, y: 0, sharp: id.startsWith("builtin:") };
+    this._previewResult = null;
+    this._renderControls();
+    this._fetchPreview();
+  }
+
+  _controls_gallery(el) {
+    if (!this._media) {
+      el.innerHTML = `<div class="hint">Loading gallery&hellip;</div>`;
+      this._loadMedia().then(() => this._mode === "gallery" && this._renderControls());
+      return;
+    }
+    const item = this._media.find((m) => m.id === this._sel);
+    const v = this._view || {};
+    const tiles = (list) => list.map((m) => `
+      <button class="tile ${m.id === this._sel ? "active" : ""}" data-id="${m.id}" title="${esc(m.name)}">
+        <img src="${m.thumb}" alt=""><span>${esc(m.name)}</span>${m.kind === "gif" ? '<i class="gif">GIF</i>' : ""}
+      </button>`).join("");
+    const mine = this._media.filter((m) => !m.builtin);
+    const builtin = this._media.filter((m) => m.builtin);
+    el.innerHTML = `
+      <label class="drop" id="drop"><input type="file" id="file" accept="image/*" multiple>
+        <span>Drop images or GIFs here, or click to upload</span></label>
+      ${item ? `
+      <div class="editor">
+        <div class="row"><b class="grow">${esc(item.name)}</b>${item.builtin ? "" : `<button class="ghost" id="delete">Delete</button>`}</div>
+        <div id="analysis"><div class="hint">Analysing&hellip;</div></div>
+        <div class="grid2">
+          <label>Framing<select id="fit">
+            <option value="cover">Fill (crop)</option><option value="contain">Fit (letterbox)</option><option value="stretch">Stretch</option>
+          </select></label>
+          <label class="toggle"><input type="checkbox" id="sharp" ${v.sharp ? "checked" : ""}> Sharp pixels</label>
+          <label class="span2">Zoom <input type="range" id="zoom" min="1" max="8" step="0.1" value="${v.zoom}"></label>
+        </div>
+        <div class="hint">Drag the screen to pan. The preview shows exactly what the panel will get.</div>
+        <div class="row wrap">
+          <button class="ghost" id="reset">Reset framing</button>
+          <span class="spacer"></span>
+          ${item.kind === "gif" ? "" : `<button class="ghost" id="edit">Edit in Draw</button>`}
+          <button class="primary" id="send">Show on panel</button>
+        </div>
+        <div class="row save"><input id="design-name" placeholder="Design name" value="${esc(item.name)}"><button class="ghost" id="save">Save design</button></div>
+      </div>` : ""}
+      ${mine.length ? `<div class="label">Your uploads</div><div class="tiles">${tiles(mine)}</div>` : ""}
+      <div class="label">Built-in animations</div><div class="tiles">${tiles(builtin)}</div>`;
+
+    const drop = el.querySelector("#drop");
+    el.querySelector("#file").addEventListener("change", (e) => this._upload([...e.target.files]));
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); this._upload([...e.dataTransfer.files]); });
+    el.querySelectorAll(".tile").forEach((t) => t.addEventListener("click", () => this._select(t.dataset.id)));
+    if (!item) return;
+
+    const fit = el.querySelector("#fit");
+    fit.value = v.fit;
+    fit.addEventListener("change", () => { v.fit = fit.value; this._schedulePreview(); });
+    el.querySelector("#sharp").addEventListener("change", (e) => { v.sharp = e.target.checked; this._schedulePreview(); });
+    el.querySelector("#zoom").addEventListener("input", (e) => { v.zoom = Number(e.target.value); this._schedulePreview(); });
+    el.querySelector("#reset").addEventListener("click", () => this._select(item.id));
+    el.querySelector("#send").addEventListener("click", () => this._run("media", { id: item.id, ...v }));
+    el.querySelector("#save").addEventListener("click", () => {
+      const first = this._anim?.frames[0];
+      this._saveDesign("media", { id: item.id, ...v }, first ? this._thumbOf(first) : item.thumb);
     });
-    el.querySelector("#edit").addEventListener("click", () => {
-      if (!this._preview) return;
+    el.querySelector("#edit")?.addEventListener("click", () => {
+      const first = this._anim?.frames[0];
+      if (!first) return;
       this._history.push(this._buf.slice());
-      this._buf = this._preview.slice();
+      this._buf = first.slice();
       this._mode = "draw";
+      this._stopAnim();
       this._render();
       this._run("image", { rgb: toBase64(this._buf) });
     });
-    if (this._form.image) load();
+    el.querySelector("#delete")?.addEventListener("click", async () => {
+      if (!confirm(`Delete ${item.name}? Designs that use it will stop working.`)) return;
+      await this._hass.callWS({ type: "idm_studio/media/delete", media_id: item.id });
+      this._sel = null;
+      this._stopAnim();
+      this._preview = null;
+      await this._loadMedia();
+      this._renderControls();
+    });
+    if (this._previewResult) this._renderAnalysis();
+  }
+
+  _thumbOf(buf) {
+    const saved = this._buf;
+    this._buf = buf;
+    const t = this._thumb();
+    this._buf = saved;
+    return t;
   }
 
   _previewThumb() {
@@ -722,7 +912,7 @@ class IdmStudioPanel extends HTMLElement {
       this._run("design", { id: d.dataset.id });
     }));
     el.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
-      await this._hass.callWS({ type: "idm_studio/design/delete", entry_id: this._entryId, id: b.dataset.del });
+      await this._hass.callWS({ type: "idm_studio/design/delete", entry_id: this._entryId, design_id: b.dataset.del });
     }));
   }
 
@@ -815,6 +1005,22 @@ button.big { width: 64px; height: 44px; border-radius: 12px; border: none; backg
 .design.active { border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color); }
 .design img, .design .glyph { width: 72px; height: 72px; image-rendering: pixelated; border-radius: 8px; background: #000; }
 .design .glyph { display: grid; place-items: center; color: #ffcc00; font-family: monospace; text-transform: uppercase; font-size: 12px; }
+.drop.over { border-color: var(--primary-color); color: var(--primary-color); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; margin: 8px 0 14px; }
+.tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; border: 1px solid var(--divider-color); background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 12px; }
+.tile.active { border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color); }
+.tile img { width: 64px; height: 64px; image-rendering: pixelated; border-radius: 6px; background: #000; }
+.tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .gif { position: absolute; top: 4px; right: 4px; font-style: normal; font-size: 9px; background: var(--primary-color); color: #fff; border-radius: 4px; padding: 1px 4px; }
+.editor { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; margin: 12px 0; }
+.grow { flex: 1; }
+.span2 { grid-column: span 2; }
+.fit { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.fit .score { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #fff; font-size: 15px; }
+.fit.good .score { background: var(--success-color, #34c759); }
+.fit.fair .score { background: var(--warning-color, #ff9500); }
+.fit.poor .score { background: var(--error-color, #db4437); }
+#analysis ul { margin: 6px 0; padding-left: 20px; font-size: 13px; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
 dt { color: var(--secondary-text-color); }
 dd { margin: 0; }

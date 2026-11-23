@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 
 from .const import CONF_SIZE, DEFAULT_SIZE, DOMAIN, PANEL_ELEMENT, PANEL_URL, STATIC_URL
+from .library import MediaLibrary
 from .runtime import SCHEMAS, IdmDisplay
 
 PLATFORMS = [Platform.BUTTON, Platform.LIGHT, Platform.SELECT]
@@ -28,11 +31,27 @@ SIGNAL_PANELS = f"{DOMAIN}_panels_changed"
 type IdmConfigEntry = ConfigEntry[IdmDisplay]
 
 
+DATA_LIBRARY = f"{DOMAIN}_library"
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    library = MediaLibrary(hass)
+    await library.async_load()
+    hass.data[DATA_LIBRARY] = library
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC_URL, str(FRONTEND_DIR), cache_headers=False)]
     )
-    for command in (ws_subscribe, ws_run, ws_save_design, ws_delete_design):
+    for command in (
+        ws_subscribe,
+        ws_run,
+        ws_save_design,
+        ws_delete_design,
+        ws_preview,
+        ws_media_list,
+        ws_media_upload,
+        ws_media_delete,
+        ws_media_rename,
+    ):
         websocket_api.async_register_command(hass, command)
     _register_services(hass)
     return True
@@ -45,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdmConfigEntry) -> bool:
         entry.data[CONF_ADDRESS],
         entry.title,
         entry.options.get(CONF_SIZE, entry.data.get(CONF_SIZE, DEFAULT_SIZE)),
+        hass.data[DATA_LIBRARY],
     )
     await display.async_load()
     entry.runtime_data = display
@@ -97,7 +117,7 @@ def _display(hass: HomeAssistant, entry_id: str | None) -> IdmDisplay:
 
 SERVICE_ACTIONS = (
     "text", "clock", "color", "effect", "image", "gif", "scoreboard",
-    "countdown", "stopwatch", "design", "sync_time", "clear",
+    "countdown", "stopwatch", "design", "sync_time", "clear", "media",
 )
 
 
@@ -201,10 +221,86 @@ async def ws_save_design(hass: HomeAssistant, connection: websocket_api.ActiveCo
     {
         vol.Required("type"): f"{DOMAIN}/design/delete",
         vol.Required("entry_id"): str,
-        vol.Required("id"): str,
+        vol.Required("design_id"): str,
     }
 )
 @callback
 def ws_delete_design(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    _display(hass, msg["entry_id"]).delete_design(msg["id"])
+    _display(hass, msg["entry_id"]).delete_design(msg["design_id"])
+    connection.send_result(msg["id"])
+
+
+# --- media library -----------------------------------------------------------
+
+
+def _ws_errors(func):
+    """Turn expected errors into websocket error replies."""
+
+    async def wrapper(hass, connection, msg):
+        try:
+            await func(hass, connection, msg)
+        except (HomeAssistantError, vol.Invalid) as err:
+            connection.send_error(msg["id"], "failed", str(err))
+
+    return wrapper
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/preview",
+        vol.Required("entry_id"): str,
+        vol.Required("view"): dict,
+    }
+)
+@websocket_api.async_response
+@_ws_errors
+async def ws_preview(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    connection.send_result(msg["id"], await _display(hass, msg["entry_id"]).async_preview(msg["view"]))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/media/list"})
+@callback
+def ws_media_list(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    connection.send_result(msg["id"], {"items": hass.data[DATA_LIBRARY].as_list()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/media/upload",
+        vol.Required("name"): str,
+        vol.Required("file"): str,
+    }
+)
+@websocket_api.async_response
+@_ws_errors
+async def ws_media_upload(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    try:
+        raw = base64.b64decode(msg["file"], validate=True)
+    except (binascii.Error, ValueError) as err:
+        raise HomeAssistantError("Invalid file data") from err
+    item = await hass.data[DATA_LIBRARY].async_add(msg["name"], raw)
+    connection.send_result(msg["id"], {"id": item["id"], "kind": item["kind"]})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/media/delete", vol.Required("media_id"): str}
+)
+@websocket_api.async_response
+@_ws_errors
+async def ws_media_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    await hass.data[DATA_LIBRARY].async_delete(msg["media_id"])
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/media/rename",
+        vol.Required("media_id"): str,
+        vol.Required("name"): vol.All(str, vol.Length(1, 60)),
+    }
+)
+@websocket_api.async_response
+@_ws_errors
+async def ws_media_rename(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    await hass.data[DATA_LIBRARY].async_rename(msg["media_id"], msg["name"])
     connection.send_result(msg["id"])
