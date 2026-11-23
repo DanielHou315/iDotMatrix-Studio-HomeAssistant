@@ -1,132 +1,83 @@
-<!--
-  README guide (delete this comment once filled):
-  - Title: the project's name, not a sentence. Short and searchable.
-  - Tagline (the blockquote): one bold sentence with the words people search for. Say what it is,
-    what it works with, and what it does without.
-  - First paragraph: who it is for and what it lets them do, in plain words. Link the key terms.
-  - Show it working (GIF or screenshot in docs/) before any install steps.
-  - GitHub "About" panel, which search engines index:
-      description: the tagline, ~150 characters, front-loaded with keywords
-      topics:      10-20 lowercase tags (domain, language, ecosystem, synonyms people search)
-      website:     the package page or docs site
-  - Keep this file to what a newcomer needs. Detail goes in docs/ and is linked from here.
--->
+# iDotMatrix Studio for Home Assistant
 
-# Repository Template
+[![license: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-<!-- Badges (https://shields.io): version, downloads, license, runtime, CI. Keep it to one row. -->
-[![license: <fill in>](https://img.shields.io/badge/license-<fill_in>-blue.svg)](LICENSE)
+> **Control iDotMatrix Bluetooth pixel displays from Home Assistant, with an app-style sidebar panel for drawing, text, clocks, GIFs and effects. No phone app or cloud.**
 
-> **This is a simple template to create an AI-agent native codebase.**
-
-<fill in: one paragraph. Who it is for, what it lets them do, and the one thing that makes it
-different. Link the key terms on first mention.>
+For Home Assistant users with an iDotMatrix LED panel (16×16, 32×32 or 64×64). It adds a sidebar
+page that works like the phone app: draw live on the panel, upload images and GIFs with an exact
+LED preview and a "will this fit at 32×32?" check, show text, clocks, effects, a scoreboard or
+timers, and save any of it as a design you can pick from automations or HomeKit.
 
 <p align="center">
-  <img src="docs/<fill in: demo>.gif" width="600" alt="<fill in: describe what the demo shows>">
+  <img src="docs/screenshot-gallery.png" width="720" alt="Gallery tab previewing the built-in Fire animation on a simulated LED panel, with a fit score of 100">
   <br>
-  <em><fill in: one-line caption.></em>
+  <em>The gallery previews exactly the frames the panel will receive.</em>
 </p>
-
-<fill in: where it is published, e.g. "Published on <registry> as `<name>`.">
-
-## Using This Template
-
-1. Click **Use this template** on GitHub, or clone and re-init the history.
-2. Fill in the title, badges, tagline and intro above, and `Repo Introduction`, `Repo Map` and
-   `Commands` in [`AGENTS.md`](AGENTS.md).
-3. Add a `LICENSE` and an `.envrc.example`.
-4. Set the GitHub description, topics and website (see the comment at the top of this file).
-5. Delete this section.
-
-## Table of contents
-
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Features](#features)
-- [Reference](#reference)
-- [Compatibility](#compatibility)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
-
-More detail lives in [`docs/`](docs/): <fill in: links to configuration, reference, and development docs>.
 
 ## Installation
 
-<fill in: prerequisites in one sentence, e.g. "You need <runtime> ≥ <version>.">
+You need Home Assistant 2025.1 or newer with a Bluetooth adapter (or ESPHome Bluetooth proxy)
+in range of the panel.
 
-<!-- One table row per platform or harness when there are several ways to install. -->
-| Platform | Install |
+| Method | Install |
 |---|---|
-| <fill in> | `<fill in>` |
+| Manual | Copy `custom_components/idm_studio` into `<config>/custom_components/` and restart Home Assistant |
 
-Environment variables are loaded by [direnv](https://direnv.net); copy `.envrc.example` to
-`.envrc`, fill it in, and run `direnv allow`.
-
-## Quick start
-
-```sh
-# 1. <fill in: first step, with a comment saying what happens>
-<fill in>
-
-# 2. <fill in: check that it works>
-<fill in>
-
-# 3. <fill in: the first real use>
-<fill in>
-```
-
-<fill in: what to try next, e.g. an example prompt or command.>
+Then **Settings → Devices & services → Add integration → iDotMatrix Studio**. Panels are also
+discovered automatically. Close the phone app first: the panel accepts one connection at a time.
 
 ## Features
 
-<!-- One short subsection per feature a user would look for. Link to docs/ for depth. -->
-
-### <fill in: feature>
-
-<fill in: two or three sentences and a minimal example.>
+- **Draw**: paint on a 32×32 grid with pen, eraser, fill and colour picker; strokes appear on the
+  panel live.
+- **Gallery**: upload images or GIFs (drag and drop), frame them with fill, fit, zoom, pan and
+  sharp or smooth scaling, and preview the exact result. A fit score warns when detail will be
+  lost at panel resolution. Ships with 13 original animations.
+- **Text, Clock, Effects, Color, Score, Timer**: the panel's built-in modes.
+- **Designs**: save anything above and replay it from the panel, the `Design` select entity,
+  automations, or HomeKit (the select is bridged as one switch per design).
 
 ## Reference
 
-<!-- The commands, tools, endpoints or options, grouped, one line each. Full detail in docs/. -->
+**Entities**: `light` (power, brightness), `select` (saved designs), `button` (sync clock).
 
-**<fill in: group>**
+**Actions** (all take an optional `config_entry_id` when you have several panels)
 
-| Name | Purpose |
+| Action | Purpose |
 |---|---|
-| `<fill in>` | <fill in> |
+| `idm_studio.text` | Scrolling or animated text |
+| `idm_studio.clock` | Clock face, style 0-7 |
+| `idm_studio.color` | Fill the panel with one colour |
+| `idm_studio.effect` | Built-in effect with 2-7 colours |
+| `idm_studio.image` / `idm_studio.gif` | Show a file from an allowed path |
+| `idm_studio.media` | Show a gallery item with framing |
+| `idm_studio.design` | Replay a saved design by name or id |
+| `idm_studio.scoreboard`, `.countdown`, `.stopwatch` | Panel timers and scores |
+| `idm_studio.sync_time`, `.clear` | Housekeeping |
 
-## Compatibility
-
-<!-- What it runs on or works with. Use footnotes for caveats instead of long cells. -->
-
-| | **<fill in>** | **<fill in>** |
-|---|---|---|
-| Versions | <fill in> | <fill in> |
-| <fill in: capability> | ✅ | — ¹ |
-
-¹ <fill in: caveat.>
+More detail lives in [`docs/`](docs/README.md).
 
 ## Contributing
 
-Issues and pull requests are welcome on [GitHub](../../issues).
+Issues and pull requests are welcome.
 
 ```sh
-<fill in: one line that installs, checks, tests and builds>
+uv run --with pytest --with pillow python -m pytest -q tests
 ```
 
-Humans and agents follow the same rules, kept in [`AGENTS.md`](AGENTS.md): one branch and worktree
-per change, test first, merge through PRs. Releases follow [Semantic Versioning](https://semver.org)
-and are tagged `vX.Y.Z`; release notes are in the [changelog](CHANGELOG.md).
+Humans and agents follow the same rules, kept in [`AGENTS.md`](AGENTS.md).
 
 ## License
 
-[<fill in>](LICENSE)<fill in: optional reason, e.g. inherited from a ported dependency.>
+[GPL-3.0](LICENSE), matching the projects the protocol was learned from.
 
 ## Acknowledgements
 
-<fill in: projects this builds on or borrows from, with links. The Engineering Principles in
-`AGENTS.md` are adapted from [Karpathy-inspired coding guidelines](https://github.com/forrestchang/andrej-karpathy-skills).>
+The BLE protocol follows [derkalle4/python3-idotmatrix-library](https://github.com/derkalle4/python3-idotmatrix-library)
+and [tukies/iDotMatrix-HomeAssistant](https://github.com/tukies/iDotMatrix-HomeAssistant), and
+[8none1/idotmatrix](https://github.com/8none1/idotmatrix) for the reverse engineering. The
+Engineering Principles in `AGENTS.md` are adapted from
+[Karpathy-inspired coding guidelines](https://github.com/forrestchang/andrej-karpathy-skills).
 
-<fill in, if relevant: "This project is not affiliated with <trademark owner>.">
+This project is not affiliated with the makers of iDotMatrix.
