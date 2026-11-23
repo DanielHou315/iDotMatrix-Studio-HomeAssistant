@@ -24,3 +24,9 @@ docs/specs
 
 # IDE files
 .vscode/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/

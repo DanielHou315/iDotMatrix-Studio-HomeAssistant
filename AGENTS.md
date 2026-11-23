@@ -2,7 +2,9 @@
 
 ## Repo Introduction
 
-<fill in on setup>
+A Home Assistant custom integration (`idm_studio`) for iDotMatrix BLE pixel panels, with an
+app-style sidebar panel. Python backend talks to the panel over Bluetooth; the panel UI is a
+single dependency-free web component. See [`docs/architecture.md`](docs/architecture.md).
 
 ## Repo Map
 
@@ -10,9 +12,9 @@ Where things live. Update when a top-level directory is added, moved, or removed
 
 | Path | Contents |
 | --- | --- |
-| `src/` | <fill in: application code> |
-| `tests/` | <fill in: test suites, mirroring `src/`> |
-| `scripts/` | <fill in: dev and maintenance scripts> |
+| `custom_components/idm_studio/` | The integration. `protocol.py` and `media.py` are pure (no Home Assistant imports); `frontend/panel.js` is the sidebar UI; `library/` is generated art. |
+| `tests/` | Pytest suites for the pure modules (`conftest.py` loads them without Home Assistant). |
+| `scripts/` | `make_library.py` regenerates `library/`; `compare_reference.py` checks packets against the reference client. |
 | `docs/` | Concise, human-facing governance: conventions, architecture, decisions. Start at `docs/README.md`. |
 | `docs/specs/`, `docs/plans/` | Agent working documents. Gitignored; do not link them as canonical. |
 | `.envrc.example` | Every environment variable, with a comment. |
@@ -25,12 +27,12 @@ Where things live. Update when a top-level directory is added, moved, or removed
 Only the commands needed to verify work. Everything else belongs in `docs/`.
 
 ```sh
-<fill in>   # install / set up
-<fill in>   # build
-<fill in>   # run all tests
-<fill in>   # run a single test
-<fill in>   # lint + format
-<fill in>   # run the app locally
+uv run --with pytest --with pillow python -m pytest -q tests          # run all tests
+uv run --with pytest --with pillow python -m pytest -q tests -k text  # run matching tests
+uvx ruff check --select E,F,B,UP --ignore E501 custom_components tests scripts  # lint
+node --check custom_components/idm_studio/frontend/panel.js           # syntax-check the panel
+uv run --with pillow python scripts/make_library.py                   # regenerate built-in art
+# run locally: copy custom_components/idm_studio into <HA config>/custom_components and restart HA
 ```
 
 ## Environment

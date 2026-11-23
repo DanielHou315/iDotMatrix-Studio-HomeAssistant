@@ -1,0 +1,123 @@
+text:
+  fields:
+    config_entry_id: &entry
+      selector:
+        config_entry:
+          integration: idm_studio
+    text:
+      required: true
+      example: "Hello"
+      selector: { text: {} }
+    mode:
+      default: 1
+      selector:
+        select:
+          options:
+            - { value: "0", label: Static }
+            - { value: "1", label: Scroll left }
+            - { value: "2", label: Scroll right }
+            - { value: "3", label: Scroll up }
+            - { value: "4", label: Scroll down }
+            - { value: "5", label: Blink }
+            - { value: "6", label: Fade }
+            - { value: "7", label: Tetris }
+            - { value: "8", label: Fill }
+    speed:
+      default: 90
+      selector: { number: { min: 1, max: 100 } }
+    color_mode:
+      default: 1
+      selector:
+        select:
+          options:
+            - { value: "0", label: White }
+            - { value: "1", label: Color }
+            - { value: "2", label: Rainbow 1 }
+            - { value: "3", label: Rainbow 2 }
+            - { value: "4", label: Rainbow 3 }
+            - { value: "5", label: Rainbow 4 }
+    color: &color
+      selector: { color_rgb: {} }
+    background:
+      selector: { color_rgb: {} }
+    font_size:
+      selector: { number: { min: 6, max: 64 } }
+clock:
+  fields:
+    config_entry_id: *entry
+    style:
+      default: 0
+      selector: { number: { min: 0, max: 7 } }
+    show_date:
+      default: true
+      selector: { boolean: {} }
+    hour24:
+      default: true
+      selector: { boolean: {} }
+    color: *color
+color:
+  fields:
+    config_entry_id: *entry
+    color:
+      required: true
+      selector: { color_rgb: {} }
+effect:
+  fields:
+    config_entry_id: *entry
+    style:
+      default: 0
+      selector: { number: { min: 0, max: 6 } }
+    colors:
+      required: true
+      example: "[[255, 0, 0], [0, 0, 255]]"
+      selector: { object: {} }
+image:
+  fields:
+    config_entry_id: *entry
+    path:
+      required: true
+      example: /config/www/idm/heart.png
+      selector: { text: {} }
+gif:
+  fields:
+    config_entry_id: *entry
+    path:
+      required: true
+      example: /config/www/idm/fire.gif
+      selector: { text: {} }
+scoreboard:
+  fields:
+    config_entry_id: *entry
+    left:
+      selector: { number: { min: 0, max: 999 } }
+    right:
+      selector: { number: { min: 0, max: 999 } }
+countdown:
+  fields:
+    config_entry_id: *entry
+    action:
+      required: true
+      selector: { select: { options: [start, pause, restart, stop] } }
+    minutes:
+      selector: { number: { min: 0, max: 255 } }
+    seconds:
+      selector: { number: { min: 0, max: 59 } }
+stopwatch:
+  fields:
+    config_entry_id: *entry
+    action:
+      required: true
+      selector: { select: { options: [start, pause, resume, reset] } }
+design:
+  fields:
+    config_entry_id: *entry
+    id:
+      required: true
+      example: Fireplace
+      selector: { text: {} }
+sync_time:
+  fields:
+    config_entry_id: *entry
+clear:
+  fields:
+    config_entry_id: *entry

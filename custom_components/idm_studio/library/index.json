@@ -1,0 +1,67 @@
+[
+  {
+    "id": "fire",
+    "name": "Fire",
+    "file": "fire.gif"
+  },
+  {
+    "id": "rain",
+    "name": "Rain",
+    "file": "rain.gif"
+  },
+  {
+    "id": "snow",
+    "name": "Snow",
+    "file": "snow.gif"
+  },
+  {
+    "id": "code-rain",
+    "name": "Code rain",
+    "file": "code-rain.gif"
+  },
+  {
+    "id": "plasma",
+    "name": "Plasma",
+    "file": "plasma.gif"
+  },
+  {
+    "id": "starfield",
+    "name": "Starfield",
+    "file": "starfield.gif"
+  },
+  {
+    "id": "heartbeat",
+    "name": "Heartbeat",
+    "file": "heartbeat.gif"
+  },
+  {
+    "id": "spinner",
+    "name": "Spinner",
+    "file": "spinner.gif"
+  },
+  {
+    "id": "waves",
+    "name": "Waves",
+    "file": "waves.gif"
+  },
+  {
+    "id": "bounce",
+    "name": "Bouncing ball",
+    "file": "bounce.gif"
+  },
+  {
+    "id": "life",
+    "name": "Game of Life",
+    "file": "life.gif"
+  },
+  {
+    "id": "fireworks",
+    "name": "Fireworks",
+    "file": "fireworks.gif"
+  },
+  {
+    "id": "rainbow",
+    "name": "Rainbow swirl",
+    "file": "rainbow.gif"
+  }
+]
