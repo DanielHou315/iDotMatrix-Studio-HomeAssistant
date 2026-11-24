@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work with a panel or the sidebar page
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what the panel or the page showed instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Panel size
+      description: Check it matches the size set in the integration's options; a wrong size can crash the panel.
+      options: ["16×16", "32×32", "64×64", "Other"]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: iDotMatrix Studio and Home Assistant versions.
+      placeholder: "iDotMatrix Studio 0.1.0, Home Assistant 2026.4.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: bluetooth
+    attributes:
+      label: Bluetooth connection
+      options: ["Local adapter", "ESPHome Bluetooth proxy", "Other / not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log
+      description: |
+        Add to `configuration.yaml`, restart, reproduce, then paste the `custom_components.idm_studio` lines:
+        ```yaml
+        logger:
+          logs:
+            custom_components.idm_studio: debug
+        ```
+      render: text

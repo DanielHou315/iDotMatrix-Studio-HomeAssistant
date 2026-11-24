@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.loader import async_get_integration
 
 from .const import CONF_SIZE, DEFAULT_SIZE, DOMAIN, PANEL_ELEMENT, PANEL_URL, STATIC_URL
 from .library import MediaLibrary
@@ -25,7 +26,6 @@ from .runtime import SCHEMAS, IdmDisplay
 PLATFORMS = [Platform.BUTTON, Platform.LIGHT, Platform.SELECT]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 FRONTEND_DIR = Path(__file__).parent / "frontend"
-VERSION = "0.1.0"
 SIGNAL_PANELS = f"{DOMAIN}_panels_changed"
 
 type IdmConfigEntry = ConfigEntry[IdmDisplay]
@@ -71,13 +71,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdmConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_reload))
     if PANEL_URL not in hass.data.get(frontend.DATA_PANELS, {}):
+        # The version busts the browser cache of panel.js after an update.
+        version = (await async_get_integration(hass, DOMAIN)).version
         await panel_custom.async_register_panel(
             hass,
             frontend_url_path=PANEL_URL,
             webcomponent_name=PANEL_ELEMENT,
             sidebar_title="iDotMatrix",
             sidebar_icon="mdi:dots-grid",
-            module_url=f"{STATIC_URL}/panel.js?v={VERSION}",
+            module_url=f"{STATIC_URL}/panel.js?v={version}",
             require_admin=False,
         )
     entry.async_on_unload(lambda: async_dispatcher_send(hass, SIGNAL_PANELS))

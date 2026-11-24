@@ -14,7 +14,9 @@ Where things live. Update when a top-level directory is added, moved, or removed
 | --- | --- |
 | `custom_components/idm_studio/` | The integration. `protocol.py` and `media.py` are pure (no Home Assistant imports); `frontend/panel.js` is the sidebar UI; `library/` is generated art. |
 | `tests/` | Pytest suites for the pure modules (`conftest.py` loads them without Home Assistant). |
-| `scripts/` | `make_library.py` regenerates `library/`; `compare_reference.py` checks packets against the reference client. |
+| `scripts/` | `make_library.py` regenerates `library/`; `compare_reference.py` checks packets against the reference client; `release.py` checks and bumps versions. |
+| `.github/` | CI (tests, lint, hassfest, HACS), the release workflow, issue and PR templates. |
+| `VERSION`, `CHANGELOG.md`, `hacs.json` | Release version (must match `manifest.json`), changelog, HACS metadata. Process in `CONTRIBUTING.md`. |
 | `docs/` | Concise, human-facing governance: conventions, architecture, decisions. Start at `docs/README.md`. |
 | `docs/specs/`, `docs/plans/` | Agent working documents. Gitignored; do not link them as canonical. |
 | `.envrc.example` | Every environment variable, with a comment. |
@@ -31,6 +33,7 @@ uv run --with pytest --with pillow python -m pytest -q tests          # run all 
 uv run --with pytest --with pillow python -m pytest -q tests -k text  # run matching tests
 uvx ruff check --select E,F,B,UP --ignore E501 custom_components tests scripts  # lint
 node --check custom_components/idm_studio/frontend/panel.js           # syntax-check the panel
+python3 scripts/release.py check                                      # VERSION, manifest, CHANGELOG agree
 uv run --with pillow python scripts/make_library.py                   # regenerate built-in art
 # run locally: copy custom_components/idm_studio into <HA config>/custom_components and restart HA
 ```

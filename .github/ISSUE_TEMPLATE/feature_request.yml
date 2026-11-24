@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest something the integration or the sidebar page should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to do?
+      description: The goal, and how you would use it. Mention if the official app can already do it.
+    validations:
+      required: true

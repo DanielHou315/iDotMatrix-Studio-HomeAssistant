@@ -1,5 +1,8 @@
 # iDotMatrix Studio for Home Assistant
 
+[![CI](https://github.com/DanielHou315/iDotMatrix-Studio-HomeAssistant/actions/workflows/ci.yml/badge.svg)](https://github.com/DanielHou315/iDotMatrix-Studio-HomeAssistant/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/DanielHou315/iDotMatrix-Studio-HomeAssistant)](https://github.com/DanielHou315/iDotMatrix-Studio-HomeAssistant/releases)
+[![HACS: custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
 [![license: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 > **Control iDotMatrix Bluetooth pixel displays from Home Assistant, with an app-style sidebar panel for drawing, text, clocks, GIFs and effects. No phone app or cloud.**
@@ -22,10 +25,13 @@ in range of the panel.
 
 | Method | Install |
 |---|---|
-| Manual | Copy `custom_components/idm_studio` into `<config>/custom_components/` and restart Home Assistant |
+| [HACS](https://hacs.xyz) | HACS → ⋮ → **Custom repositories** → add `https://github.com/DanielHou315/iDotMatrix-Studio-HomeAssistant` as an **Integration**, then install **iDotMatrix Studio** and restart Home Assistant |
+| Manual | Download `custom_components/idm_studio` from the [latest release](https://github.com/DanielHou315/iDotMatrix-Studio-HomeAssistant/releases/latest) into `<config>/custom_components/` and restart Home Assistant |
 
 Then **Settings → Devices & services → Add integration → iDotMatrix Studio**. Panels are also
 discovered automatically. Close the phone app first: the panel accepts one connection at a time.
+Pick the panel's real size during setup (or later under **Configure**): a wrong size can crash
+the panel when it shows text.
 
 ## Features
 
@@ -60,13 +66,9 @@ More detail lives in [`docs/`](docs/README.md).
 
 ## Contributing
 
-Issues and pull requests are welcome.
-
-```sh
-uv run --with pytest --with pillow python -m pytest -q tests
-```
-
-Humans and agents follow the same rules, kept in [`AGENTS.md`](AGENTS.md).
+Issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, checks
+and the release process, and [`CHANGELOG.md`](CHANGELOG.md) for what changed. Humans and agents
+follow the same rules, kept in [`AGENTS.md`](AGENTS.md).
 
 ## License
 
