@@ -18,6 +18,12 @@ DEFAULT_DELAY = 100
 ANALYSIS_SCALE = 4  # analyse at 4x panel resolution
 ANALYSIS_FRAMES = 6
 MAX_SOURCE_EDGE = 768  # decoded frames are shrunk to this to bound memory
+MAX_PIXELS = 16_000_000  # per frame; refuses decompression bombs before decoding
+MAX_TOTAL_PIXELS = 64_000_000  # across the decoded frames
+
+
+class MediaError(ValueError):
+    """The data is not an image this integration will decode."""
 
 FITS = ("cover", "contain", "stretch")
 
@@ -55,21 +61,33 @@ class Prepared:
 
 def load(data: bytes) -> Source:
     """Decode a still or animated image (GIF, PNG/APNG, WebP, JPEG...)."""
-    with Image.open(io.BytesIO(data)) as img:
-        width, height = img.size
-        total = getattr(img, "n_frames", 1)
-        frames, delays = [], []
-        for frame in ImageSequence.Iterator(img):
-            if len(frames) >= MAX_FRAMES:
-                break
-            frame = ImageOps.exif_transpose(frame) if not frames and total == 1 else frame
-            rgba = frame.convert("RGBA")
-            flat = Image.new("RGB", rgba.size, (0, 0, 0))
-            flat.paste(rgba, mask=rgba.getchannel("A"))
-            if max(flat.size) > MAX_SOURCE_EDGE:
-                flat.thumbnail((MAX_SOURCE_EDGE, MAX_SOURCE_EDGE), Image.Resampling.BOX)
-            frames.append(flat)
-            delays.append(max(MIN_DELAY, int(frame.info.get("duration") or DEFAULT_DELAY)))
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            width, height = img.size
+            total = getattr(img, "n_frames", 1)
+            if width * height > MAX_PIXELS or width * height * min(total, MAX_FRAMES) > MAX_TOTAL_PIXELS:
+                raise MediaError(f"Image is too large ({width}x{height}, {total} frames)")
+            img.draft("RGB", (MAX_SOURCE_EDGE, MAX_SOURCE_EDGE))  # JPEG: decode already shrunk
+            frames, delays = [], []
+            for frame in ImageSequence.Iterator(img):
+                if len(frames) >= MAX_FRAMES:
+                    break
+                frame = ImageOps.exif_transpose(frame) if not frames and total == 1 else frame
+                rgba = frame.convert("RGBA")
+                if max(rgba.size) > MAX_SOURCE_EDGE:
+                    rgba.thumbnail((MAX_SOURCE_EDGE, MAX_SOURCE_EDGE), Image.Resampling.BOX)
+                flat = Image.new("RGB", rgba.size, (0, 0, 0))
+                flat.paste(rgba, mask=rgba.getchannel("A"))
+                frames.append(flat)
+                delays.append(max(MIN_DELAY, int(frame.info.get("duration") or DEFAULT_DELAY)))
+    except MediaError:
+        raise
+    except Image.DecompressionBombError as err:
+        raise MediaError("Image is too large") from err
+    except (OSError, SyntaxError, ValueError) as err:
+        raise MediaError(f"Could not read the image: {err}") from err
+    if not frames:
+        raise MediaError("The image has no frames")
     return Source(frames, delays, total, width, height)
 
 

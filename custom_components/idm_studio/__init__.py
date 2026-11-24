@@ -202,6 +202,7 @@ async def ws_run(hass: HomeAssistant, connection: websocket_api.ActiveConnection
     connection.send_result(msg["id"])
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/design/save",
@@ -209,7 +210,9 @@ async def ws_run(hass: HomeAssistant, connection: websocket_api.ActiveConnection
         vol.Required("name"): vol.All(str, vol.Length(1, 60)),
         vol.Required("action"): str,
         vol.Required("data"): dict,
-        vol.Optional("thumb"): vol.All(str, vol.Length(max=20000)),
+        vol.Optional("thumb"): vol.All(
+            str, vol.Length(max=20000), vol.Match(r"^data:image/png;base64,[A-Za-z0-9+/]+=*$")
+        ),
     }
 )
 @websocket_api.async_response
@@ -224,6 +227,7 @@ async def ws_save_design(hass: HomeAssistant, connection: websocket_api.ActiveCo
     connection.send_result(msg["id"], {"id": design_id})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/design/delete",
@@ -271,6 +275,7 @@ def ws_media_list(hass: HomeAssistant, connection: websocket_api.ActiveConnectio
     connection.send_result(msg["id"], {"items": hass.data[DATA_LIBRARY].as_list()})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/media/upload",
@@ -289,6 +294,7 @@ async def ws_media_upload(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], {"id": item["id"], "kind": item["kind"]})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/media/delete", vol.Required("media_id"): str}
 )
@@ -299,6 +305,7 @@ async def ws_media_delete(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"])
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/media/rename",

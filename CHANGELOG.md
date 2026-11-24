@@ -6,6 +6,8 @@ the same PR as the change.
 
 ## [Unreleased]
 
+First release.
+
 ### Added
 
 - Integration for iDotMatrix Bluetooth panels (16×16, 32×32, 64×64): discovery, a `light`
@@ -14,11 +16,16 @@ the same PR as the change.
 - Sidebar panel modelled on the phone app: live drawing, text, clock, effects, timers, designs,
   and a gallery with uploads, an exact LED preview and a fit score.
 - 13 original built-in animations.
-- HACS packaging, CI, issue templates and an automated release workflow.
+- Automatic panel size detection: setup reads the size from the panel, and every connection
+  checks it, correcting the setting instead of sending content that could crash the panel.
+- Reliable, fast uploads: chunk acknowledgements, the negotiated Bluetooth write size, and GIFs
+  encoded the way the firmware expects.
+- Integration icon, and the panel's firmware version on its device page.
+- HACS packaging.
 
-### Fixed
+### Security
 
-- Uploads wait for the panel's acknowledgement of every chunk, so larger GIFs are no longer
-  dropped.
-- Uploads use the negotiated Bluetooth write size instead of 20-byte writes (about 10× faster).
-- GIF frames share one full palette, so the panel no longer garbles frames.
+- Changing the shared library or saved designs needs an admin; other users can still show
+  content on the panel.
+- Image decoding is bounded: oversized images are refused before decoding, and the library and
+  designs have size limits.

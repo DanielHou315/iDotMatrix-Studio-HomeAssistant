@@ -321,29 +321,6 @@ def _drop_local_tables(gif: bytes) -> bytes:
     return bytes(out)
 
 
-def resize_gif(data: bytes, size: int) -> bytes:
-    """Re-encode an arbitrary GIF to the panel size, keeping its timing."""
-    with Image.open(io.BytesIO(data)) as img:
-        delay = img.info.get("duration", 100) or 100
-        frames = []
-        try:
-            while True:
-                frames.append(img.convert("RGB").copy())
-                img.seek(img.tell() + 1)
-        except EOFError:
-            pass
-    return frames_to_gif(frames, size, delay)
-
-
-def fit_image(data: bytes, size: int) -> bytes:
-    """Decode any image file and return ``size`` x ``size`` RGB bytes."""
-    with Image.open(io.BytesIO(data)) as img:
-        img = img.convert("RGB")
-        if img.size != (size, size):
-            img = img.resize((size, size), Image.Resampling.LANCZOS)
-        return img.tobytes()
-
-
 # --- native scrolling text ---------------------------------------------------
 
 

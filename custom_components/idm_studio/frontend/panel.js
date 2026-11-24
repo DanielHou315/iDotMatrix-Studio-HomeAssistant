@@ -24,6 +24,8 @@ const TEXT_COLOR_MODES = ["White", "Solid color", "Rainbow 1", "Rainbow 2", "Rai
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const rgbToHex = (rgb) => "#" + rgb.map((c) => c.toString(16).padStart(2, "0")).join("");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Only inline PNG data URLs are used as images; anything else is dropped.
+const safeImg = (s) => (/^data:image\/png;base64,[A-Za-z0-9+\/]+=*$/.test(s || "") ? s : "");
 
 function toBase64(bytes) {
   let s = "";
@@ -418,7 +420,7 @@ class IdmStudioPanel extends HTMLElement {
     const status = root.querySelector("#status");
     if (!status || !p) return;
     const picker = this._panels.length > 1
-      ? `<select id="panel-pick">${this._panels.map((x) => `<option value="${x.entry_id}" ${x.entry_id === this._entryId ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`
+      ? `<select id="panel-pick">${this._panels.map((x) => `<option value="${esc(x.entry_id)}" ${x.entry_id === this._entryId ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`
       : `<span class="name">${esc(p.name)}</span>`;
     status.innerHTML = `${picker}<span class="dot ${p.connected ? "on" : ""}" title="${p.connected ? "Connected" : "Idle (connects on demand)"}"></span>`;
     root.querySelector("#panel-pick")?.addEventListener("change", (e) => {
@@ -710,8 +712,8 @@ class IdmStudioPanel extends HTMLElement {
     const item = this._media.find((m) => m.id === this._sel);
     const v = this._view || {};
     const tiles = (list) => list.map((m) => `
-      <button class="tile ${m.id === this._sel ? "active" : ""}" data-id="${m.id}" title="${esc(m.name)}">
-        <img src="${m.thumb}" alt=""><span>${esc(m.name)}</span>${m.kind === "gif" ? '<i class="gif">GIF</i>' : ""}
+      <button class="tile ${m.id === this._sel ? "active" : ""}" data-id="${esc(m.id)}" title="${esc(m.name)}">
+        <img src="${safeImg(m.thumb)}" alt=""><span>${esc(m.name)}</span>${m.kind === "gif" ? '<i class="gif">GIF</i>' : ""}
       </button>`).join("");
     const mine = this._media.filter((m) => !m.builtin);
     const builtin = this._media.filter((m) => m.builtin);
@@ -927,10 +929,10 @@ class IdmStudioPanel extends HTMLElement {
       return;
     }
     el.innerHTML = `<div class="designs">${p.designs.map((d) => `
-      <div class="design ${d.id === current ? "active" : ""}" data-id="${d.id}">
-        ${d.thumb ? `<img src="${d.thumb}" alt="">` : `<div class="glyph">${esc(d.action)}</div>`}
+      <div class="design ${d.id === current ? "active" : ""}" data-id="${esc(d.id)}">
+        ${d.thumb ? `<img src="${safeImg(d.thumb)}" alt="">` : `<div class="glyph">${esc(d.action)}</div>`}
         <span>${esc(d.name)}</span>
-        <button class="x" data-del="${d.id}" title="Delete">&times;</button>
+        <button class="x" data-del="${esc(d.id)}" title="Delete">&times;</button>
       </div>`).join("")}</div>`;
     el.querySelectorAll(".design").forEach((d) => d.addEventListener("click", (e) => {
       if (e.target.closest("[data-del]")) return;

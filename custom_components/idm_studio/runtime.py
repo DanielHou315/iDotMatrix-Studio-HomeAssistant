@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import json
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -31,6 +32,8 @@ BASE64 = cv.string
 
 MAX_UPLOAD = 2 * 1024 * 1024
 MAX_FRAMES = 64
+MAX_DESIGNS = 100
+MAX_DESIGN_BYTES = 2 * 1024 * 1024
 
 # Actions that change what the panel shows; these can be saved as designs.
 SHOW_ACTIONS = ("clock", "color", "effect", "image", "gif", "animation", "text", "scoreboard", "media")
@@ -343,9 +346,12 @@ class IdmDisplay:
             await self._send_canvas()
 
     async def _prepare(self, raw: bytes, view: dict[str, Any]) -> media.Prepared:
-        return await self.hass.async_add_executor_job(
-            media.prepare, raw, self.size, media.View(**view)
-        )
+        try:
+            return await self.hass.async_add_executor_job(
+                media.prepare, raw, self.size, media.View(**view)
+            )
+        except media.MediaError as err:
+            raise HomeAssistantError(str(err)) from err
 
     async def _do_image(self, data):
         if "rgb" in data:
@@ -431,7 +437,11 @@ class IdmDisplay:
     def save_design(self, name: str, action: str, data: dict[str, Any], thumb: str | None) -> str:
         if action not in SHOW_ACTIONS:
             raise HomeAssistantError(f"{action} cannot be saved as a design")
+        if len(self.designs) >= MAX_DESIGNS:
+            raise HomeAssistantError(f"A panel holds at most {MAX_DESIGNS} designs; delete some first")
         data = SCHEMAS[action](copy.deepcopy(data))
+        if len(json.dumps(data)) > MAX_DESIGN_BYTES:
+            raise HomeAssistantError("Design is too large to save")
         design = {"id": uuid.uuid4().hex[:12], "name": name, "action": action, "data": data}
         if thumb:
             design["thumb"] = thumb

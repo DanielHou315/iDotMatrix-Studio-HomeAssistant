@@ -21,6 +21,7 @@ from .const import DOMAIN, STORAGE_VERSION
 
 BUILTIN_DIR = Path(__file__).parent / "library"
 MAX_UPLOAD = 8 * 1024 * 1024
+MAX_ITEMS = 200
 FORMATS = {"GIF": "gif", "PNG": "png", "JPEG": "jpg", "WEBP": "webp", "BMP": "bmp"}
 
 
@@ -94,6 +95,8 @@ class MediaLibrary:
     async def async_add(self, name: str, data: bytes) -> dict[str, Any]:
         if len(data) > MAX_UPLOAD:
             raise HomeAssistantError("File is larger than 8 MB")
+        if len(self.items) >= MAX_ITEMS:
+            raise HomeAssistantError(f"The library holds at most {MAX_ITEMS} items; delete some first")
 
         def write() -> tuple[str, str, str]:
             try:
@@ -104,11 +107,15 @@ class MediaLibrary:
                 raise HomeAssistantError("Not an image this panel can use") from err
             if fmt not in FORMATS:
                 raise HomeAssistantError(f"Unsupported image format {fmt}")
+            try:
+                thumb = _thumb_data_url(data)  # full decode first: nothing is written if it fails
+            except media.MediaError as err:
+                raise HomeAssistantError(str(err)) from err
             media_id = uuid.uuid4().hex[:12]
             filename = f"{media_id}.{FORMATS[fmt]}"
             self.dir.mkdir(parents=True, exist_ok=True)
             (self.dir / filename).write_bytes(data)
-            return media_id, filename, ("gif" if animated else "image"), _thumb_data_url(data)
+            return media_id, filename, ("gif" if animated else "image"), thumb
 
         media_id, filename, kind, thumb = await self.hass.async_add_executor_job(write)
         item = {
