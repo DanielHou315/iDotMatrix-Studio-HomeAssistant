@@ -127,3 +127,36 @@ def test_text_packet_small_panel():
     payload = p.text_packet(p.text_bitmaps("A", 16, font), 16)[16:]
     assert payload[14:18] == b"\x02\xff\xff\xff"
     assert len(payload) == 14 + 1 * (4 + 16)
+
+
+def _frame_tables(gif: bytes) -> list[int]:
+    """Local color table size of every frame (0 = uses the global table)."""
+    i = 13 + (3 * (2 << (gif[10] & 7)) if gif[10] & 128 else 0)
+    sizes = []
+    while gif[i] != 0x3B:
+        if gif[i] == 0x21:
+            i += 2
+        else:
+            local = gif[i + 9]
+            size = (2 << (local & 7)) if local & 128 else 0
+            sizes.append(size)
+            i += 10 + 3 * size + 1
+        while gif[i]:
+            i += gif[i] + 1
+        i += 1
+    return sizes
+
+
+def test_gif_frames_share_one_full_palette():
+    # Frames with few, different colors: Pillow would write tables of varying size.
+    frames = [Image.new("RGB", (16, 16), (0, 0, 0)) for _ in range(4)]
+    for i, frame in enumerate(frames):
+        for k in range(i * 3 + 1):
+            frame.putpixel((k, k), (255, k * 20, 40 * i))
+    gif = p.frames_to_gif(frames, 16, 100)
+    assert gif[10] & 128 and gif[10] & 7 == 7  # 256-entry global table
+    assert _frame_tables(gif) == [0, 0, 0, 0]
+    with Image.open(io.BytesIO(gif)) as img:
+        for i, frame in enumerate(frames):
+            img.seek(i)
+            assert img.convert("RGB").getpixel((0, 0)) == frame.getpixel((0, 0))
