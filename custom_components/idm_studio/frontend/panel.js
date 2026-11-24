@@ -120,7 +120,8 @@ class IdmStudioPanel extends HTMLElement {
     });
   }
 
-  get panel() {
+  // Not `panel`: Home Assistant sets that property to the panel config.
+  get _current() {
     return this._panels.find((p) => p.entry_id === this._entryId);
   }
 
@@ -128,8 +129,8 @@ class IdmStudioPanel extends HTMLElement {
     this._loaded = true;
     this._error = null;
     this._panels = panels;
-    if (!this.panel && panels.length) this._entryId = panels[0].entry_id;
-    const p = this.panel;
+    if (!this._current && panels.length) this._entryId = panels[0].entry_id;
+    const p = this._current;
     if (p && (!this._buf || this._buf.length !== p.size * p.size * 3)) {
       this._size = p.size;
       this._buf = fromBase64(p.canvas);
@@ -145,7 +146,7 @@ class IdmStudioPanel extends HTMLElement {
   // --- backend calls -----------------------------------------------------------
 
   async _run(action, data = {}, { quiet = false } = {}) {
-    if (!this.panel) return false;
+    if (!this._current) return false;
     try {
       if (!quiet) this._setBusy(true);
       await this._hass.callWS({ type: "idm_studio/run", entry_id: this._entryId, action, data });
@@ -186,7 +187,7 @@ class IdmStudioPanel extends HTMLElement {
     const n = this._size;
     const px = canvas.width / n;
     const ctx = canvas.getContext("2d");
-    const state = this.panel?.state;
+    const state = this._current?.state;
     // The panel's own brightness, so the preview dims like the real thing.
     const level = !state || state.power ? 0.3 + 0.7 * ((state?.brightness ?? 100) / 100) : 0;
     ctx.globalCompositeOperation = "source-over";
@@ -361,11 +362,11 @@ class IdmStudioPanel extends HTMLElement {
         <div class="title">iDotMatrix</div>
         <div id="status"></div>
       </div>
-      ${this.panel ? this._layout() : `<div class="empty">${this._emptyMessage()}</div>`}`;
+      ${this._current ? this._layout() : `<div class="empty">${this._emptyMessage()}</div>`}`;
     const menu = root.querySelector("ha-menu-button");
     menu.hass = this._hass;
     menu.narrow = this._narrow;
-    if (!this.panel) return;
+    if (!this._current) return;
     const canvas = root.querySelector("#screen");
     canvas.addEventListener("pointerdown", (e) => this._pointer(e, "down"));
     canvas.addEventListener("pointermove", (e) => this._pointer(e, "move"));
@@ -409,7 +410,7 @@ class IdmStudioPanel extends HTMLElement {
 
   _renderStatus() {
     const root = this.shadowRoot;
-    const p = this.panel;
+    const p = this._current;
     const status = root.querySelector("#status");
     if (!status || !p) return;
     const picker = this._panels.length > 1
@@ -847,7 +848,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_score(el) {
-    const s = { ...this.panel.state.scoreboard };
+    const s = { ...this._current.state.scoreboard };
     const [saveHtml, bindSave] = this._saveRow(() => this._saveDesign("scoreboard", { ...s }));
     el.innerHTML = `
       <div class="score">
@@ -915,7 +916,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_designs(el) {
-    const p = this.panel;
+    const p = this._current;
     const current = p.state.design;
     if (!p.designs.length) {
       el.innerHTML = `<div class="hint">No saved designs yet. Use "Save design" in any mode. Saved designs also appear in the Design entity, so automations and HomeKit can pick them.</div>`;
@@ -937,7 +938,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_settings(el) {
-    const p = this.panel;
+    const p = this._current;
     el.innerHTML = `
       <div class="grid2">
         <label class="toggle"><input type="checkbox" id="flip" ${p.state.flip ? "checked" : ""}> Rotate 180&deg;</label>
@@ -1046,4 +1047,5 @@ dt { color: var(--secondary-text-color); }
 dd { margin: 0; }
 `;
 
-customElements.define("idm-studio-panel", IdmStudioPanel);
+// A new panel.js URL (after an update) loads this module again in open tabs.
+if (!customElements.get("idm-studio-panel")) customElements.define("idm-studio-panel", IdmStudioPanel);
