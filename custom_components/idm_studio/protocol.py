@@ -205,6 +205,18 @@ def _dark_background(gif: bytes) -> bytes:
     return bytes(out)
 
 
+def _full_palette(frame: Image.Image) -> Image.Image:
+    """Pad a frame's palette to 256 entries.
+
+    Pillow writes color tables only as large as the colors a frame uses, so
+    they differ between frames, and the firmware garbles or drops frames
+    whose table size changes.
+    """
+    palette = frame.getpalette()[: 256 * 3]
+    frame.putpalette(palette + [0] * (256 * 3 - len(palette)))
+    return frame
+
+
 def frames_to_gif(
     frames: Sequence[Image.Image], size: int, delay_ms: int | Sequence[int]
 ) -> bytes:
@@ -225,13 +237,14 @@ def frames_to_gif(
     for i, frame in enumerate(rgb):
         strip.paste(frame, (0, i * size))
     palette = strip.quantize(colors=256)
-    indexed = [frame.quantize(palette=palette) for frame in rgb]
+    indexed = [_full_palette(frame.quantize(palette=palette)) for frame in rgb]
     buffer = io.BytesIO()
     indexed[0].save(
         buffer,
         format="GIF",
         save_all=True,
         append_images=indexed[1:],
+        optimize=False,  # optimizing trims the color tables again
         loop=0,
         duration=(
             [max(20, int(d)) for d in delay_ms]
@@ -240,7 +253,49 @@ def frames_to_gif(
         ),
         disposal=2,
     )
-    return _dark_background(buffer.getvalue())
+    return _dark_background(_drop_local_tables(buffer.getvalue()))
+
+
+def _skip_sub_blocks(gif: bytes, i: int) -> int:
+    while gif[i]:
+        i += gif[i] + 1
+    return i + 1
+
+
+def _drop_local_tables(gif: bytes) -> bytes:
+    """Remove per-frame color tables that repeat the global one.
+
+    Every frame shares one padded palette, but Pillow still writes it into
+    each frame; at 16x16 those 768-byte copies outweigh the pixels.
+    """
+    flags = gif[10]
+    if not flags & 128:
+        return gif
+    start = 13 + 3 * (2 << (flags & 7))
+    table = gif[13:start]
+    out = bytearray(gif[:start])
+    i = start
+    while i < len(gif):
+        block = gif[i]
+        if block == 0x21:  # extension
+            end = _skip_sub_blocks(gif, i + 2)
+            out += gif[i:end]
+            i = end
+        elif block == 0x2C:  # image descriptor
+            local = gif[i + 9]
+            size = 3 * (2 << (local & 7)) if local & 128 else 0
+            own = gif[i + 10 : i + 10 + size]
+            if size and own == table:
+                out += gif[i : i + 9] + bytes([local & 0x78])
+            else:
+                out += gif[i : i + 10] + own
+            end = _skip_sub_blocks(gif, i + 10 + size + 1)
+            out += gif[i + 10 + size : end]
+            i = end
+        else:  # trailer
+            out += gif[i:]
+            break
+    return bytes(out)
 
 
 def resize_gif(data: bytes, size: int) -> bytes:
