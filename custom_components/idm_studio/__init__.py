@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,6 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
-from homeassistant.loader import async_get_integration
 
 from .const import CONF_SIZE, DEFAULT_SIZE, DOMAIN, PANEL_ELEMENT, PANEL_URL, STATIC_URL
 from .library import MediaLibrary
@@ -71,8 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdmConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_reload))
     if PANEL_URL not in hass.data.get(frontend.DATA_PANELS, {}):
-        # The version busts the browser cache of panel.js after an update.
-        version = (await async_get_integration(hass, DOMAIN)).version
+        # A content hash in the URL busts every cache (browsers, and proxies such
+        # as Cloudflare that ignore Cache-Control) whenever panel.js changes.
+        version = await hass.async_add_executor_job(_panel_hash)
         await panel_custom.async_register_panel(
             hass,
             frontend_url_path=PANEL_URL,
@@ -85,6 +86,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdmConfigEntry) -> bool:
     entry.async_on_unload(lambda: async_dispatcher_send(hass, SIGNAL_PANELS))
     async_dispatcher_send(hass, SIGNAL_PANELS)
     return True
+
+
+def _panel_hash() -> str:
+    return hashlib.sha256((FRONTEND_DIR / "panel.js").read_bytes()).hexdigest()[:12]
 
 
 async def _reload(hass: HomeAssistant, entry: IdmConfigEntry) -> None:
