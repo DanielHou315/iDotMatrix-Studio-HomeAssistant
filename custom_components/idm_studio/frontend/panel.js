@@ -95,7 +95,8 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this._unsub) this._unsub.then((u) => u());
+    clearTimeout(this._retry);
+    if (this._unsub) this._unsub.then((u) => u()).catch(() => {});
     this._unsub = null;
     this._subscribed = false;
   }
@@ -105,7 +106,18 @@ class IdmStudioPanel extends HTMLElement {
 
   _subscribe() {
     this._subscribed = true;
+    this._loaded = false;
+    this._error = null;
+    this._render();
     this._unsub = this._hass.connection.subscribeMessage((msg) => this._onState(msg.panels), { type: "idm_studio/subscribe" });
+    // Fails while the integration is still starting (e.g. right after a restart): say so and retry.
+    this._unsub.catch((err) => {
+      this._unsub = null;
+      this._error = err?.message || err?.code || String(err);
+      this._render();
+      clearTimeout(this._retry);
+      this._retry = setTimeout(() => this._hass && this.isConnected && this._subscribe(), 5000);
+    });
   }
 
   get panel() {
@@ -113,6 +125,8 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _onState(panels) {
+    this._loaded = true;
+    this._error = null;
     this._panels = panels;
     if (!this.panel && panels.length) this._entryId = panels[0].entry_id;
     const p = this.panel;
@@ -347,7 +361,7 @@ class IdmStudioPanel extends HTMLElement {
         <div class="title">iDotMatrix</div>
         <div id="status"></div>
       </div>
-      ${this.panel ? this._layout() : `<div class="empty">No iDotMatrix panel is set up yet. Add one under Settings &rarr; Devices &amp; services.</div>`}`;
+      ${this.panel ? this._layout() : `<div class="empty">${this._emptyMessage()}</div>`}`;
     const menu = root.querySelector("ha-menu-button");
     menu.hass = this._hass;
     menu.narrow = this._narrow;
@@ -368,6 +382,12 @@ class IdmStudioPanel extends HTMLElement {
     });
     this._renderStatus();
     this._renderControls();
+  }
+
+  _emptyMessage() {
+    if (this._error) return `Can't reach iDotMatrix Studio (${esc(this._error)}). It may still be starting; retrying&hellip;`;
+    if (!this._loaded) return "Connecting&hellip;";
+    return "No iDotMatrix panel is set up yet. Add one under Settings &rarr; Devices &amp; services.";
   }
 
   _layout() {
