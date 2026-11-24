@@ -95,7 +95,8 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this._unsub) this._unsub.then((u) => u());
+    clearTimeout(this._retry);
+    if (this._unsub) this._unsub.then((u) => u()).catch(() => {});
     this._unsub = null;
     this._subscribed = false;
   }
@@ -105,17 +106,31 @@ class IdmStudioPanel extends HTMLElement {
 
   _subscribe() {
     this._subscribed = true;
+    this._loaded = false;
+    this._error = null;
+    this._render();
     this._unsub = this._hass.connection.subscribeMessage((msg) => this._onState(msg.panels), { type: "idm_studio/subscribe" });
+    // Fails while the integration is still starting (e.g. right after a restart): say so and retry.
+    this._unsub.catch((err) => {
+      this._unsub = null;
+      this._error = err?.message || err?.code || String(err);
+      this._render();
+      clearTimeout(this._retry);
+      this._retry = setTimeout(() => this._hass && this.isConnected && this._subscribe(), 5000);
+    });
   }
 
-  get panel() {
+  // Not `panel`: Home Assistant sets that property to the panel config.
+  get _current() {
     return this._panels.find((p) => p.entry_id === this._entryId);
   }
 
   _onState(panels) {
+    this._loaded = true;
+    this._error = null;
     this._panels = panels;
-    if (!this.panel && panels.length) this._entryId = panels[0].entry_id;
-    const p = this.panel;
+    if (!this._current && panels.length) this._entryId = panels[0].entry_id;
+    const p = this._current;
     if (p && (!this._buf || this._buf.length !== p.size * p.size * 3)) {
       this._size = p.size;
       this._buf = fromBase64(p.canvas);
@@ -131,7 +146,7 @@ class IdmStudioPanel extends HTMLElement {
   // --- backend calls -----------------------------------------------------------
 
   async _run(action, data = {}, { quiet = false } = {}) {
-    if (!this.panel) return false;
+    if (!this._current) return false;
     try {
       if (!quiet) this._setBusy(true);
       await this._hass.callWS({ type: "idm_studio/run", entry_id: this._entryId, action, data });
@@ -172,13 +187,17 @@ class IdmStudioPanel extends HTMLElement {
     const n = this._size;
     const px = canvas.width / n;
     const ctx = canvas.getContext("2d");
-    const state = this.panel?.state;
+    const state = this._current?.state;
     // The panel's own brightness, so the preview dims like the real thing.
     const level = !state || state.power ? 0.3 + 0.7 * ((state?.brightness ?? 100) / 100) : 0;
     ctx.globalCompositeOperation = "source-over";
     ctx.filter = "none";
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Each LED is a rounded square filling 80% of its cell, leaving an even gap.
+    const side = px * 0.8;
+    const inset = (px - side) / 2;
+    const corner = side * 0.22;
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
         const o = (y * n + x) * 3;
@@ -187,7 +206,7 @@ class IdmStudioPanel extends HTMLElement {
         if (Math.max(r, g, b) < 10) r = g = b = 0;
         ctx.fillStyle = r + g + b && level ? `rgb(${r * level},${g * level},${b * level})` : "#141414";
         ctx.beginPath();
-        ctx.arc(x * px + px / 2, y * px + px / 2, px * 0.4, 0, Math.PI * 2);
+        ctx.roundRect(x * px + inset, y * px + inset, side, side, corner);
         ctx.fill();
       }
     }
@@ -347,11 +366,11 @@ class IdmStudioPanel extends HTMLElement {
         <div class="title">iDotMatrix</div>
         <div id="status"></div>
       </div>
-      ${this.panel ? this._layout() : `<div class="empty">No iDotMatrix panel is set up yet. Add one under Settings &rarr; Devices &amp; services.</div>`}`;
+      ${this._current ? this._layout() : `<div class="empty">${this._emptyMessage()}</div>`}`;
     const menu = root.querySelector("ha-menu-button");
     menu.hass = this._hass;
     menu.narrow = this._narrow;
-    if (!this.panel) return;
+    if (!this._current) return;
     const canvas = root.querySelector("#screen");
     canvas.addEventListener("pointerdown", (e) => this._pointer(e, "down"));
     canvas.addEventListener("pointermove", (e) => this._pointer(e, "move"));
@@ -368,6 +387,12 @@ class IdmStudioPanel extends HTMLElement {
     });
     this._renderStatus();
     this._renderControls();
+  }
+
+  _emptyMessage() {
+    if (this._error) return `Can't reach iDotMatrix Studio (${esc(this._error)}). It may still be starting; retrying&hellip;`;
+    if (!this._loaded) return "Connecting&hellip;";
+    return "No iDotMatrix panel is set up yet. Add one under Settings &rarr; Devices &amp; services.";
   }
 
   _layout() {
@@ -389,7 +414,7 @@ class IdmStudioPanel extends HTMLElement {
 
   _renderStatus() {
     const root = this.shadowRoot;
-    const p = this.panel;
+    const p = this._current;
     const status = root.querySelector("#status");
     if (!status || !p) return;
     const picker = this._panels.length > 1
@@ -827,7 +852,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_score(el) {
-    const s = { ...this.panel.state.scoreboard };
+    const s = { ...this._current.state.scoreboard };
     const [saveHtml, bindSave] = this._saveRow(() => this._saveDesign("scoreboard", { ...s }));
     el.innerHTML = `
       <div class="score">
@@ -895,7 +920,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_designs(el) {
-    const p = this.panel;
+    const p = this._current;
     const current = p.state.design;
     if (!p.designs.length) {
       el.innerHTML = `<div class="hint">No saved designs yet. Use "Save design" in any mode. Saved designs also appear in the Design entity, so automations and HomeKit can pick them.</div>`;
@@ -917,7 +942,7 @@ class IdmStudioPanel extends HTMLElement {
   }
 
   _controls_settings(el) {
-    const p = this.panel;
+    const p = this._current;
     el.innerHTML = `
       <div class="grid2">
         <label class="toggle"><input type="checkbox" id="flip" ${p.state.flip ? "checked" : ""}> Rotate 180&deg;</label>
@@ -1026,4 +1051,5 @@ dt { color: var(--secondary-text-color); }
 dd { margin: 0; }
 `;
 
-customElements.define("idm-studio-panel", IdmStudioPanel);
+// A new panel.js URL (after an update) loads this module again in open tabs.
+if (!customElements.get("idm-studio-panel")) customElements.define("idm-studio-panel", IdmStudioPanel);
