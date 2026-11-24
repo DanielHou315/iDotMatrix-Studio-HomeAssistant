@@ -160,3 +160,13 @@ def test_gif_frames_share_one_full_palette():
         for i, frame in enumerate(frames):
             img.seek(i)
             assert img.convert("RGB").getpixel((0, 0)) == frame.getpixel((0, 0))
+
+
+def test_device_info_reports_screen_size():
+    # Replies to set_time from a real 16x16 (firmware 3.16) and a 64x64 (5.09).
+    small = p.parse_device_info(bytes.fromhex("09 00 01 80 03 10 01 01 00"))
+    assert (small.firmware, small.screen_type, small.size, small.protected) == ("3.16", 1, 16, False)
+    big = p.parse_device_info(bytes.fromhex("09 00 01 80 05 09 01 04 01"))
+    assert (big.firmware, big.size, big.protected) == ("5.09", 64, True)
+    assert p.parse_device_info(bytes.fromhex("09 00 01 80 03 10 01 02 00")).size is None  # 8x32
+    assert p.parse_device_info(bytes.fromhex("05 00 01 00 03")) is None  # upload ack

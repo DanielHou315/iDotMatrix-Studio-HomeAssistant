@@ -48,5 +48,10 @@ Findings from a real 16x16 panel (firmware 3.16), several matching the notes in
   `05 00 <kind> 00 <status>`: `01` send the next chunk, `03` finished, `02` no room, `00`
   rejected. Sending the next chunk early makes it drop the upload silently, so we wait for each
   answer (5 s, like the official app). A 21 KB, 64-frame GIF plays fine this way.
+- **Screen size is reported.** The panel answers `set_time` with
+  `09 00 01 80 <major> <minor> <?> <type> <password>`; type 1 = 16x16, 3 = 32x32, 4 = 64x64
+  (2 = 8x32 and 11 = 16x64 exist). Setup reads it to pick the size, and every connect checks it:
+  on a mismatch the command is refused and the setting corrected, since content drawn for the
+  wrong size can crash the panel. The firmware version goes to the device registry.
 - **GIF color tables.** Frames whose color tables differ in size are garbled or dropped, so every
   GIF uses one 256-entry global table and no per-frame tables.

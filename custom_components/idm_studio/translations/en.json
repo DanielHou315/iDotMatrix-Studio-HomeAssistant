@@ -3,23 +3,24 @@
     "flow_title": "{name}",
     "step": {
       "user": {
-        "description": "Pick the iDotMatrix panel to add.",
+        "description": "Pick the iDotMatrix panel to add. Its size is read from the panel.",
         "data": {
-          "address": "Panel",
-          "size": "Panel size"
+          "address": "Panel"
         }
       },
       "confirm": {
-        "description": "Add {name}?",
-        "data": {
-          "size": "Panel size"
-        }
+        "description": "Add {name}? Its size is read from the panel, so make sure the phone app is closed."
       },
       "manual": {
         "description": "No iDotMatrix panel is advertising right now (it may be off, or connected to the phone app). Enter its Bluetooth address to add it anyway; it will connect when the panel is reachable.",
         "data": {
           "address": "Bluetooth address",
-          "name": "Name",
+          "name": "Name"
+        }
+      },
+      "size": {
+        "description": "Couldn't read the size of {name}: {reason}. Pick it yourself; it is corrected automatically the next time the panel reports it. A wrong size can make the panel restart when it shows text.",
+        "data": {
           "size": "Panel size"
         }
       }

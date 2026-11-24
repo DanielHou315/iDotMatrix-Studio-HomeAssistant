@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
@@ -36,17 +36,34 @@ BULK_PAUSE = 0.05
 # characteristic with ``05 00 <kind> 00 <status>``. Sending the next chunk
 # before that answer makes it drop data. The official app waits 5 s.
 ACK_TIMEOUT = 5.0
+# The panel answers set_time with its firmware version and screen type.
+INFO_WAIT = 2.0
 ACK_NEXT = {0: 2, 1: 1, 2: 1}  # kind -> status meaning "send the next chunk"
 ACK_DONE = {0: (0, 1), 1: (3,), 2: (3,)}
+
+
+class SizeMismatch(HomeAssistantError):
+    """The panel reports a different screen size than it is set up with."""
 
 
 class IdmConnection:
     """Serialises writes to one panel and keeps the link up while it is busy."""
 
-    def __init__(self, hass: HomeAssistant, address: str, name: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        address: str,
+        name: str,
+        size: int | None = None,
+        on_info: Callable[[protocol.PanelInfo], None] | None = None,
+    ) -> None:
         self.hass = hass
         self.address = address
         self.name = name
+        self.size = size  # what the panel is set up as; None skips the check
+        self.on_info = on_info
+        self.info: protocol.PanelInfo | None = None
+        self._info_ready = asyncio.Event()
         self._client: BleakClientWithServiceCache | None = None
         self._lock = asyncio.Lock()
         self._idle: asyncio.TimerHandle | None = None
@@ -96,9 +113,34 @@ class IdmConnection:
             await self._client.start_notify(protocol.UUID_NOTIFY, self._on_notification)
         except BleakError as err:
             _LOGGER.debug("No notifications from %s: %s", self.address, err)
+        self._info_ready.clear()
         await self._write(protocol.set_time(dt_util.now()))
+        try:
+            async with asyncio.timeout(INFO_WAIT):
+                await self._info_ready.wait()
+        except TimeoutError:
+            _LOGGER.debug("%s did not report its device info", self.address)
+        else:
+            _LOGGER.debug("%s reports %s", self.address, self.info)
+            if self.on_info:
+                self.on_info(self.info)
         self._notify()
         return self._client
+
+    def _check_size(self) -> None:
+        """Refuse to send content drawn for the wrong size; it can crash the panel."""
+        detected = self.info.size if self.info else None
+        if self.size and detected and detected != self.size:
+            raise SizeMismatch(
+                f"{self.name} is a {detected}x{detected} panel but is set up as "
+                f"{self.size}x{self.size}. The setting has been corrected; try again."
+            )
+
+    async def async_read_info(self) -> protocol.PanelInfo | None:
+        """Connect if needed and return what the panel reported about itself."""
+        async with self._lock:
+            await self._ensure_connected()
+            return self.info
 
     async def _wait_for_mtu(self) -> None:
         """Learn the negotiated write size, which BlueZ may not report yet."""
@@ -145,6 +187,10 @@ class IdmConnection:
 
     def _on_notification(self, _char, data: bytearray) -> None:
         _LOGGER.debug("%s says %s", self.address, data.hex(" "))
+        if info := protocol.parse_device_info(bytes(data)):
+            self.info = info
+            self._info_ready.set()
+            return
         self._acks.put_nowait(bytes(data))
 
     async def _upload(self, chunks: Sequence[bytes]) -> None:
@@ -185,6 +231,7 @@ class IdmConnection:
             for attempt in (1, 2):
                 try:
                     await self._ensure_connected()
+                    self._check_size()
                     for item in packets:
                         if isinstance(item, list):
                             await self._upload(item)

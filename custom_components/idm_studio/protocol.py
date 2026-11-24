@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import zlib
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
@@ -79,6 +80,28 @@ def set_time(now: datetime) -> bytes:
             now.second,
         ]
     )
+
+
+# Screen types the panel reports; 2 (8x32) and 11 (16x64) exist but are not supported.
+SCREEN_SIZES = {1: 16, 3: 32, 4: 64}
+
+
+@dataclass(frozen=True)
+class PanelInfo:
+    firmware: str
+    screen_type: int
+    protected: bool
+
+    @property
+    def size(self) -> int | None:
+        return SCREEN_SIZES.get(self.screen_type)
+
+
+def parse_device_info(data: bytes) -> PanelInfo | None:
+    """Read the panel's reply to ``set_time``: ``09 00 01 80 major minor ? type password``."""
+    if len(data) < 9 or data[:4] != bytes([9, 0, 1, 128]):
+        return None
+    return PanelInfo(firmware=f"{data[4]}.{data[5]:02d}", screen_type=data[7], protected=data[8] == 1)
 
 
 # --- modes -----------------------------------------------------------------
