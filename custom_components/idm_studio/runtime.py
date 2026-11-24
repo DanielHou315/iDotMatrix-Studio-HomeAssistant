@@ -277,6 +277,34 @@ class IdmDisplay:
 
     async def _do_sync_time(self, data):
         await self.conn.send(protocol.set_time(dt_util.now()))
+        # Setting the clock makes the firmware drop what it was playing and
+        # fall back to its own stored screen, so put ours back.
+        await self._restore()
+
+    async def _restore(self) -> None:
+        """Send whatever the panel was last showing again, if we know it."""
+        mode = self.state.get("mode")
+        # "image" is left out: an animated file sent that way never reaches the canvas.
+        if mode in ("pixels", "clear") and self.state.get("design") is None:
+            await self.conn.send(protocol.image_mode())
+            await self.conn.send(protocol.image_packets(bytes(self.canvas), self.size))
+            return
+        shown = None
+        if design_id := self.state.get("design"):
+            try:
+                design = self.get_design(design_id)
+                shown = (design["action"], design["data"])
+            except HomeAssistantError:
+                pass
+        if shown is None and (last := self.state.get("last")) and last["action"] == mode:
+            shown = (last["action"], last["data"])
+        # Countdown and stopwatch would restart from zero, so leave those.
+        if shown is None or shown[0] in ("countdown", "stopwatch"):
+            return
+        action, data = shown
+        if action in ("pixels", "image", "clear"):
+            await self.conn.send(protocol.image_mode())
+        await getattr(self, f"_do_{action}")(SCHEMAS[action](copy.deepcopy(data)))
 
     async def _do_clock(self, data):
         await self.conn.send(protocol.clock(data["style"], data["show_date"], data["hour24"], data["color"]))
