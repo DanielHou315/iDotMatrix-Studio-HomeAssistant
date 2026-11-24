@@ -2,6 +2,8 @@
 
 import io
 
+import pytest
+
 from PIL import Image, ImageDraw, ImageFont
 
 from conftest import load
@@ -108,3 +110,20 @@ def test_transparency_becomes_black():
     img = Image.new("RGBA", (32, 32), (255, 255, 255, 0))
     out = m.prepare(png(img), 32, m.View()).frames[0]
     assert out.getpixel((5, 5)) == (0, 0, 0)
+
+
+def test_huge_dimensions_are_refused_before_decoding():
+    # A tiny file that claims 20000x20000 pixels (a decompression bomb).
+    bomb = png(Image.new("1", (20000, 20000)))
+    assert len(bomb) < 200_000
+    with pytest.raises(m.MediaError, match="too large"):
+        m.load(bomb)
+    # Below Pillow's own limit but above ours.
+    with pytest.raises(m.MediaError, match="too large"):
+        m.load(png(Image.new("1", (5000, 5000))))
+
+
+def test_truncated_image_is_a_media_error():
+    data = png(bold_shape())
+    with pytest.raises(m.MediaError):
+        m.load(data[: len(data) // 2])
