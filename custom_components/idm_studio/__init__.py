@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,6 @@ from .runtime import SCHEMAS, IdmDisplay
 PLATFORMS = [Platform.BUTTON, Platform.LIGHT, Platform.SELECT]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 FRONTEND_DIR = Path(__file__).parent / "frontend"
-VERSION = "0.1.0"
 SIGNAL_PANELS = f"{DOMAIN}_panels_changed"
 
 type IdmConfigEntry = ConfigEntry[IdmDisplay]
@@ -71,18 +71,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdmConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_reload))
     if PANEL_URL not in hass.data.get(frontend.DATA_PANELS, {}):
+        # A content hash in the URL busts every cache (browsers, and proxies such
+        # as Cloudflare that ignore Cache-Control) whenever panel.js changes.
+        version = await hass.async_add_executor_job(_panel_hash)
         await panel_custom.async_register_panel(
             hass,
             frontend_url_path=PANEL_URL,
             webcomponent_name=PANEL_ELEMENT,
             sidebar_title="iDotMatrix",
             sidebar_icon="mdi:dots-grid",
-            module_url=f"{STATIC_URL}/panel.js?v={VERSION}",
+            module_url=f"{STATIC_URL}/panel.js?v={version}",
             require_admin=False,
         )
     entry.async_on_unload(lambda: async_dispatcher_send(hass, SIGNAL_PANELS))
     async_dispatcher_send(hass, SIGNAL_PANELS)
     return True
+
+
+def _panel_hash() -> str:
+    return hashlib.sha256((FRONTEND_DIR / "panel.js").read_bytes()).hexdigest()[:12]
 
 
 async def _reload(hass: HomeAssistant, entry: IdmConfigEntry) -> None:

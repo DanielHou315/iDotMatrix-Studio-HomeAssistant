@@ -1,0 +1,46 @@
+name: Release
+
+# Merging a PR that changes VERSION publishes that version: a vX.Y.Z tag and a
+# GitHub release whose notes are the version's CHANGELOG section. HACS offers
+# the release to users.
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check version
+        id: version
+        run: |
+          python3 scripts/release.py check
+          version="$(cat VERSION)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$version" = "0.0.0" ] || git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            python3 scripts/release.py notes "$VERSION"
+            printf '\n\n---\n\nBuilt largely on the iDotMatrix protocol work of %s, %s, %s and %s. Thank you! See the [acknowledgements](%s).\n' \
+              "[markusressel](https://github.com/markusressel/idotmatrix-api-client)" \
+              "[8none1](https://github.com/8none1/idotmatrix)" \
+              "[derkalle4](https://github.com/derkalle4/python3-idotmatrix-library)" \
+              "[tukies](https://github.com/tukies/iDotMatrix-HomeAssistant)" \
+              "https://github.com/$GITHUB_REPOSITORY#acknowledgements"
+          } > notes.md
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md

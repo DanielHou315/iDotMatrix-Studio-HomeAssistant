@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - name: Tests
+        # Same Python and Pillow as Home Assistant 2026.4.
+        run: uv run --python 3.14 --with pytest==8.4.2 --with pillow==12.2.0 python -m pytest -q tests
+      - name: Lint
+        run: uvx ruff@0.14.0 check --select E,F,B,UP --ignore E501 custom_components tests scripts
+      - name: Panel syntax
+        run: node --check custom_components/idm_studio/frontend/panel.js
+      - name: Version and changelog
+        run: python3 scripts/release.py check
