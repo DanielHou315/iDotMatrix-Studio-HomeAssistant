@@ -6,6 +6,14 @@ the same PR as the change.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-24
+
+### Fixed
+
+- Syncing the clock no longer replaces what the panel is showing: the firmware drops the current
+  GIF or design when its time is set (one minute after every Home Assistant restart and nightly),
+  so the integration now sends it again.
+
 ## [0.1.0] - 2026-11-23
 
 First release.
