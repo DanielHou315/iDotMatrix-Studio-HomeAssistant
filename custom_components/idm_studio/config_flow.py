@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from typing import Any
+
+from bleak.exc import BleakError
 
 import voluptuous as vol
 
@@ -14,8 +18,13 @@ from homeassistant.components.bluetooth import (
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import CONF_SIZE, DEFAULT_SIZE, DOMAIN
+from .device import IdmConnection
+
+_LOGGER = logging.getLogger(__name__)
+PROBE_TIMEOUT = 30.0
 
 SIZE_SCHEMA = vol.In({16: "16 x 16", 32: "32 x 32", 64: "64 x 64"})
 
@@ -30,6 +39,8 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._discovery: BluetoothServiceInfoBleak | None = None
         self._found: dict[str, str] = {}
+        self._address = ""
+        self._name = ""
 
     async def async_step_bluetooth(self, info: BluetoothServiceInfoBleak) -> ConfigFlowResult:
         await self.async_set_unique_id(info.address)
@@ -41,25 +52,17 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         info = self._discovery
         if user_input is not None:
-            return self.async_create_entry(
-                title=info.name,
-                data={CONF_ADDRESS: info.address, CONF_SIZE: user_input[CONF_SIZE]},
-            )
-        return self.async_show_form(
-            step_id="confirm",
-            data_schema=vol.Schema({vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA}),
-            description_placeholders={"name": info.name},
-        )
+            self._address, self._name = info.address, info.name
+            return await self._async_detect()
+        return self.async_show_form(step_id="confirm", description_placeholders={"name": info.name})
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=self._found[address],
-                data={CONF_ADDRESS: address, CONF_SIZE: user_input[CONF_SIZE]},
-            )
+            self._address, self._name = address, self._found[address]
+            return await self._async_detect()
         configured = self._async_current_ids(include_ignore=False)
         self._found = {
             info.address: info.name
@@ -75,7 +78,6 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_ADDRESS): vol.In(
                         {a: f"{n} ({a})" for a, n in self._found.items()}
                     ),
-                    vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA,
                 }
             ),
         )
@@ -90,20 +92,51 @@ class IdmConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(address, raise_on_progress=False)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME].strip() or f"IDM {address[-8:]}",
-                    data={CONF_ADDRESS: address, CONF_SIZE: user_input[CONF_SIZE]},
-                )
+                self._address = address
+                self._name = user_input[CONF_NAME].strip() or f"IDM {address[-8:]}"
+                return await self._async_detect()
         return self.async_show_form(
             step_id="manual",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): str,
                     vol.Optional(CONF_NAME, default=""): str,
-                    vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA,
                 }
             ),
             errors=errors,
+        )
+
+    async def _async_detect(self) -> ConfigFlowResult:
+        """Ask the panel for its screen size; fall back to asking the user."""
+        conn = IdmConnection(self.hass, self._address, self._name)
+        reason = "it did not report a size this integration knows"
+        try:
+            async with asyncio.timeout(PROBE_TIMEOUT):
+                info = await conn.async_read_info()
+        except (HomeAssistantError, BleakError, TimeoutError, EOFError) as err:
+            _LOGGER.debug("Could not read the size of %s: %s", self._address, err)
+            info = None
+            reason = "it could not be reached (close the phone app, and check it is on and in range)"
+        finally:
+            await conn.disconnect()
+        if info and info.size:
+            return self._create(info.size)
+        return await self.async_step_size(reason=reason)
+
+    async def async_step_size(
+        self, user_input: dict[str, Any] | None = None, reason: str = ""
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self._create(user_input[CONF_SIZE])
+        return self.async_show_form(
+            step_id="size",
+            data_schema=vol.Schema({vol.Required(CONF_SIZE, default=DEFAULT_SIZE): SIZE_SCHEMA}),
+            description_placeholders={"name": self._name, "reason": reason},
+        )
+
+    def _create(self, size: int) -> ConfigFlowResult:
+        return self.async_create_entry(
+            title=self._name, data={CONF_ADDRESS: self._address, CONF_SIZE: size}
         )
 
     @staticmethod

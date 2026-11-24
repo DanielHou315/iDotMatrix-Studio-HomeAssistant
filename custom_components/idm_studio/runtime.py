@@ -14,12 +14,12 @@ from PIL import ImageFont
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from . import media, protocol
-from .const import DOMAIN, STORAGE_VERSION
+from .const import CONF_SIZE, DOMAIN, STORAGE_VERSION
 from .device import IdmConnection
 from .library import MediaLibrary
 
@@ -150,7 +150,7 @@ class IdmDisplay:
         self.entry_id = entry_id
         self.name = name
         self.size = size
-        self.conn = IdmConnection(hass, address, name)
+        self.conn = IdmConnection(hass, address, name, size, self._on_info)
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}")
         self.state: dict[str, Any] = {
             "power": True,
@@ -165,6 +165,23 @@ class IdmDisplay:
         self.canvas = bytearray(size * size * 3)
         self._listeners: list[Callable[[], None]] = []
         self._unsub_conn = self.conn.add_listener(self._changed)
+
+    @callback
+    def _on_info(self, info: protocol.PanelInfo) -> None:
+        """The panel told us its firmware and screen size (on every connect)."""
+        registry = dr.async_get(self.hass)
+        if device := registry.async_get_device(identifiers={(DOMAIN, self.address)}):
+            changes: dict[str, str] = {"sw_version": info.firmware}
+            if info.size:
+                changes["model"] = f"{info.size}x{info.size} pixel display"
+            registry.async_update_device(device.id, **changes)
+        if info.size and info.size != self.size:
+            # Fix the setting; the entry reloads with the right size.
+            entry = self.hass.config_entries.async_get_entry(self.entry_id)
+            if entry:
+                self.hass.config_entries.async_update_entry(
+                    entry, options={**entry.options, CONF_SIZE: info.size}
+                )
 
     @property
     def address(self) -> str:
