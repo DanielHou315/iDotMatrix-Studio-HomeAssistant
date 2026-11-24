@@ -194,6 +194,10 @@ class IdmStudioPanel extends HTMLElement {
     ctx.filter = "none";
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Each LED is a rounded square filling 80% of its cell, leaving an even gap.
+    const side = px * 0.8;
+    const inset = (px - side) / 2;
+    const corner = side * 0.22;
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
         const o = (y * n + x) * 3;
@@ -202,7 +206,7 @@ class IdmStudioPanel extends HTMLElement {
         if (Math.max(r, g, b) < 10) r = g = b = 0;
         ctx.fillStyle = r + g + b && level ? `rgb(${r * level},${g * level},${b * level})` : "#141414";
         ctx.beginPath();
-        ctx.arc(x * px + px / 2, y * px + px / 2, px * 0.4, 0, Math.PI * 2);
+        ctx.roundRect(x * px + inset, y * px + inset, side, side, corner);
         ctx.fill();
       }
     }
