@@ -12,6 +12,9 @@ page that works like the phone app: draw live on the panel, upload images and GI
 LED preview and a "will this fit at 32×32?" check, show text, clocks, effects, a scoreboard or
 timers, and save any of it as a design you can pick from automations or HomeKit.
 
+Built on the community's reverse engineering of the iDotMatrix protocol; see
+[Acknowledgements](#acknowledgements).
+
 <p align="center">
   <img src="docs/screenshot-gallery.png" width="720" alt="Gallery tab previewing the built-in Fire animation on a simulated LED panel, with a fit score of 100">
   <br>
@@ -76,10 +79,21 @@ follow the same rules, kept in [`AGENTS.md`](AGENTS.md).
 
 ## Acknowledgements
 
-The BLE protocol follows [derkalle4/python3-idotmatrix-library](https://github.com/derkalle4/python3-idotmatrix-library)
-and [tukies/iDotMatrix-HomeAssistant](https://github.com/tukies/iDotMatrix-HomeAssistant), and
-[8none1/idotmatrix](https://github.com/8none1/idotmatrix) for the reverse engineering. The
-Engineering Principles in `AGENTS.md` are adapted from
+This integration is built largely on the community's reverse engineering of the iDotMatrix
+panels. None of it would exist without these projects. Thank you!
+
+- [markusressel/idotmatrix-api-client](https://github.com/markusressel/idotmatrix-api-client):
+  careful [protocol notes](https://github.com/markusressel/idotmatrix-api-client/blob/main/docs/DEVICE-PROTOCOL.md),
+  checked on real panels, that this integration relies on most: upload acknowledgements, write
+  sizes, GIF palette rules, and the screen-type report behind automatic size detection.
+- [8none1/idotmatrix](https://github.com/8none1/idotmatrix): the original reverse engineering of the
+  Bluetooth protocol.
+- [derkalle4/python3-idotmatrix-library](https://github.com/derkalle4/python3-idotmatrix-library):
+  the Python library that turned it into a reusable client.
+- [tukies/iDotMatrix-HomeAssistant](https://github.com/tukies/iDotMatrix-HomeAssistant): the Home
+  Assistant integration whose client our packets were checked against byte for byte.
+
+The Engineering Principles in `AGENTS.md` are adapted from
 [Karpathy-inspired coding guidelines](https://github.com/forrestchang/andrej-karpathy-skills).
 
 This project is not affiliated with the makers of iDotMatrix.

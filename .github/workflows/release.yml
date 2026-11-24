@@ -34,5 +34,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          python3 scripts/release.py notes "$VERSION" > notes.md
+          {
+            python3 scripts/release.py notes "$VERSION"
+            printf '\n\n---\n\nBuilt largely on the iDotMatrix protocol work of %s, %s, %s and %s. Thank you! See the [acknowledgements](%s).\n' \
+              "[markusressel](https://github.com/markusressel/idotmatrix-api-client)" \
+              "[8none1](https://github.com/8none1/idotmatrix)" \
+              "[derkalle4](https://github.com/derkalle4/python3-idotmatrix-library)" \
+              "[tukies](https://github.com/tukies/iDotMatrix-HomeAssistant)" \
+              "https://github.com/$GITHUB_REPOSITORY#acknowledgements"
+          } > notes.md
           gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
